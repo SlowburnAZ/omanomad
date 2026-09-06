@@ -19,6 +19,16 @@ The NOMAD widget appears in the bar (right section). Open it and press
 - 5 GB free disk space
 - Docker — installed automatically from the official Arch repos via pacman; nothing to do by hand
 
+## VPNs
+
+Disconnect before installing, updating, or running: the panel detects a
+running stack by polling `http://localhost:8080/api/health`, and some VPN
+clients (observed with Nym) break localhost HTTP entirely — the panel then
+reports stopped forever and Start looks dead (it isn't; the containers come
+up fine). The installer also derives the printed LAN URL from the default
+route, so it shows the VPN endpoint instead of the LAN address while
+connected.
+
 ## What the panel does
 
 | UI action           | Command run                                                  |
