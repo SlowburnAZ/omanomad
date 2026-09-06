@@ -17,7 +17,6 @@
 # NOTE: Ollama-on-another-host and WSL2 setups are admin-UI concerns,
 # not installer scope.
 
-###################################################################################################################################################################################################
 
 # Script                | omanomad Installation Script (Arch port of Project NOMAD Installation Script 1.0.0)
 # Author                | Crosstalk Solutions, LLC (upstream); Omarchy port: omanomad contributors
@@ -28,11 +27,9 @@
 #                                                                                           Color Codes                                                                                           #
 #                                                                                                                                                                                                 #
 ###################################################################################################################################################################################################
-
 RESET='\033[0m'
 YELLOW='\033[1;33m'
-WHITE_R='\033[39m' # Same as GRAY_R for terminals with white background.
-GRAY_R='\033[39m'
+WHITE_R='\033[39m' # Light gray; readable on terminals with white background.
 RED='\033[1;31m' # Light Red.
 GREEN='\033[1;32m' # Light Green.
 
@@ -42,14 +39,12 @@ GREEN='\033[1;32m' # Light Green.
 #                                                                                                                                                                                                 #
 ###################################################################################################################################################################################################
 
-WHIPTAIL_TITLE="Project NOMAD Installation"
 NOMAD_DIR="/opt/project-nomad"
 MANAGEMENT_COMPOSE_FILE_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/management_compose.yaml"
 START_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/start_nomad.sh"
 STOP_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/stop_nomad.sh"
 UPDATE_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/update_nomad.sh"
 script_option_debug='true'
-accepted_terms='false'
 local_ip_address=''
 
 ###################################################################################################################################################################################################
@@ -288,7 +283,7 @@ setup_nvidia_container_toolkit() {
       if ! grep -q '"nvidia"' "$daemon_json" 2>/dev/null; then
         # Add nvidia runtime to existing config using jq if available
         if command -v jq &> /dev/null; then
-          if sudo jq '. + {"runtimes": {"nvidia": {"path": "nvidia-container-runtime", "runtimeArgs": []}}}' "$daemon_json" > /tmp/daemon.json.tmp 2>/dev/null; then
+          if sudo jq '. + {"runtimes": {"nvidia": {"path": "nvidia-container-runtime", "runtimeArgs": []}}}' "$daemon_json" 2>/dev/null | sudo tee /tmp/daemon.json.tmp > /dev/null && [[ -s /tmp/daemon.json.tmp ]]; then
             if sudo mv /tmp/daemon.json.tmp "$daemon_json" 2>/dev/null; then
               config_success=true
             fi
@@ -361,7 +356,7 @@ accept_terms() {
   read -p "I have read and accept License Agreement & Terms of Use (y/N)? " choice
   case "$choice" in
     y|Y )
-      accepted_terms='true'
+      echo -e "${GREEN}#${RESET} License Agreement & Terms of Use accepted."
       ;;
     * )
       echo "License Agreement & Terms of Use not accepted. Installation cannot continue."
@@ -399,9 +394,10 @@ download_management_compose_file() {
   fi
   echo -e "${GREEN}#${RESET} Docker compose file downloaded successfully to $compose_file_path.\\n"
 
-  local app_key=$(generateRandomPass)
-  local db_root_password=$(generateRandomPass)
-  local db_user_password=$(generateRandomPass)
+  local app_key db_root_password db_user_password
+  app_key=$(generateRandomPass)
+  db_root_password=$(generateRandomPass)
+  db_user_password=$(generateRandomPass)
 
   # If MySQL data directory exists from a previous install attempt, remove it.
   # MySQL only initializes credentials on first startup when the data dir is empty.
