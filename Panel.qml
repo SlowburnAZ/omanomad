@@ -29,6 +29,7 @@ Panel {
   readonly property var installedComponents: components.filter(function(c) { return c.installed; })
   readonly property var availableComponents: components.filter(function(c) { return !c.installed; })
 
+  readonly property string glyph: ""
   readonly property int pollIntervalMs: Math.max(5, root.setting("refreshIntervalSec", 30) || 30) * 1000
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
