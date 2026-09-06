@@ -23,6 +23,7 @@ health_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$HEALTH_URL"
 curl_status=$?
 if [[ $curl_status -ne 0 ]]; then
   echo "Command Center health check unreachable at ${HEALTH_URL} (curl exit ${curl_status})." >&2
+  echo "If a VPN is connected, disconnect and retry — VPN clients can break localhost traffic." >&2
   exit 2
 fi
 
