@@ -312,7 +312,7 @@ Panel {
 
             Text {
               textFormat: Text.RichText
-              text: '<a href="http://localhost:8080">localhost:8080</a>'
+              text: '<a href="http://localhost:8080">localhost:8080</a> — Command Center'
               color: root.dim
               linkColor: root.foreground
               font.family: root.fontFamily
