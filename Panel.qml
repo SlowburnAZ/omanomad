@@ -75,6 +75,35 @@ Panel {
     return lines.slice(Math.max(0, lines.length - 5)).join("\n");
   }
 
+  // Single source of truth for state -> visible actions. Array order is
+  // render order; `states` filters per nomadState. Purge row and dialogs
+  // stay outside: single instances with no repetition to absorb.
+  property var actionDefs: [
+    { id: "install", text: "Install Project NOMAD", states: ["not-installed"], primary: true },
+    { id: "open", text: "Open Command Center", states: ["running"], primary: true },
+    { id: "start", text: "Start", states: ["stopped"], primary: true, needsIdle: true },
+    { id: "stop", text: "Stop", states: ["running"], needsIdle: true },
+    { id: "openDisabled", text: "Open Command Center", states: ["stopped"], enabled: false },
+    { id: "update", text: "Update", states: ["stopped", "running"] },
+    { id: "uninstall", text: "Uninstall…", states: ["stopped", "running"], danger: true }
+  ]
+
+  function actionVisible(def) {
+    return def.states.indexOf(root.nomadState) !== -1;
+  }
+
+  function performAction(id) {
+    if (id === "install") root.runInTerminal("install.sh", "");
+    else if (id === "open") Qt.openUrlExternally("http://localhost:8080");
+    else if (id === "start") root.runPrivileged("start.sh");
+    else if (id === "stop") root.runPrivileged("stop.sh");
+    else if (id === "update") root.runInTerminal("update.sh", "");
+    else if (id === "uninstall") {
+      if (root.purgeData) purgeDialog.opened = true;
+      else uninstallDialog.opened = true;
+    }
+  }
+
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -206,59 +235,20 @@ Panel {
             wrapMode: Text.WordWrap
           }
 
-          Button {
-            visible: root.nomadState === "not-installed"
-            width: parent.width
-            text: "Install Project NOMAD"
-            selected: true
-            fontFamily: root.fontFamily
-            onClicked: root.runInTerminal("install.sh", "")
+          Repeater {
+            model: root.actionDefs
+            delegate: Button {
+              required property var modelData
+              visible: root.actionVisible(modelData)
+              width: parent.width
+              text: modelData.text
+              selected: !!modelData.primary
+              foreground: modelData.danger ? root.urgent : undefined
+              enabled: modelData.enabled !== false && (!modelData.needsIdle || !root.actionRunning)
+              fontFamily: root.fontFamily
+              onClicked: root.performAction(modelData.id)
+            }
           }
-
-          Button {
-            visible: root.nomadState === "running"
-            width: parent.width
-            text: "Open Command Center"
-            selected: true
-            fontFamily: root.fontFamily
-            onClicked: Qt.openUrlExternally("http://localhost:8080")
-          }
-
-          Button {
-            visible: root.nomadState === "stopped"
-            width: parent.width
-            text: "Start"
-            selected: true
-            enabled: !root.actionRunning
-            fontFamily: root.fontFamily
-            onClicked: root.runPrivileged("start.sh")
-          }
-
-          Button {
-            visible: root.nomadState === "running"
-            width: parent.width
-            text: "Stop"
-            enabled: !root.actionRunning
-            fontFamily: root.fontFamily
-            onClicked: root.runPrivileged("stop.sh")
-          }
-
-          Button {
-            visible: root.nomadState === "stopped"
-            width: parent.width
-            text: "Open Command Center"
-            enabled: false
-            fontFamily: root.fontFamily
-          }
-
-          Button {
-            visible: root.nomadState === "stopped" || root.nomadState === "running"
-            width: parent.width
-            text: "Update"
-            fontFamily: root.fontFamily
-            onClicked: root.runInTerminal("update.sh", "")
-          }
-
           RowLayout {
             visible: root.nomadState === "stopped" || root.nomadState === "running"
             width: parent.width
@@ -284,17 +274,6 @@ Panel {
             }
           }
 
-          Button {
-            visible: root.nomadState === "stopped" || root.nomadState === "running"
-            width: parent.width
-            text: "Uninstall…"
-            foreground: root.urgent
-            fontFamily: root.fontFamily
-            onClicked: {
-              if (root.purgeData) purgeDialog.opened = true;
-              else uninstallDialog.opened = true;
-            }
-          }
         }
       }
 
