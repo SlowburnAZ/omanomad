@@ -278,12 +278,14 @@ Panel {
 
             Text {
               textFormat: Text.RichText
-              text: '<a href="http://localhost:8080">localhost:8080</a> — Command Center'
+              text: '<a href="http://localhost:8080">localhost:8080</a>'
               color: root.dim
               linkColor: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
-              wrapMode: Text.WordWrap
+              wrapMode: Text.NoWrap
+              elide: Text.ElideRight
+              width: parent.width - Style.space(16)
               anchors.verticalCenter: parent.verticalCenter
               onLinkActivated: function(link) { Qt.openUrlExternally(link); }
             }
