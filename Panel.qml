@@ -54,6 +54,12 @@ Panel {
     else root.nomadState = "unknown";
   }
 
+  // Two launch paths, deliberately not unified: Start/Stop are
+  // non-interactive (direct pkexec, exit-code capture below), while
+  // Install/Update/Uninstall need a terminal for their prompts and are
+  // fire-and-forget (bar.run offers no completion signal to unify on).
+  // One adapter per path = hypothetical seam; don't merge them.
+
   function runPrivileged(script) {
     if (actionProc.running) return;
     root.actionRunning = true;
