@@ -22,16 +22,9 @@
 # Author                | Crosstalk Solutions, LLC (upstream); Omarchy port: omanomad contributors
 # Website               | https://crosstalksolutions.com
 
-###################################################################################################################################################################################################
-#                                                                                                                                                                                                 #
-#                                                                                           Color Codes                                                                                           #
-#                                                                                                                                                                                                 #
-###################################################################################################################################################################################################
-RESET='\033[0m'
-YELLOW='\033[1;33m'
-WHITE_R='\033[39m' # Light gray; readable on terminals with white background.
-RED='\033[1;31m' # Light Red.
-GREEN='\033[1;32m' # Light Green.
+# Shared pre-flight checks and messaging (sourced library, never executed directly).
+# shellcheck source=bin/lib/preflight.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/preflight.sh"
 
 ###################################################################################################################################################################################################
 #                                                                                                                                                                                                 #
@@ -39,13 +32,10 @@ GREEN='\033[1;32m' # Light Green.
 #                                                                                                                                                                                                 #
 ###################################################################################################################################################################################################
 
-NOMAD_DIR="/opt/project-nomad"
 MANAGEMENT_COMPOSE_FILE_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/management_compose.yaml"
 START_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/start_nomad.sh"
 STOP_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/stop_nomad.sh"
 UPDATE_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/update_nomad.sh"
-script_option_debug='true'
-local_ip_address=''
 
 ###################################################################################################################################################################################################
 #                                                                                                                                                                                                 #
@@ -56,43 +46,6 @@ local_ip_address=''
 header() {
   if [[ "${script_option_debug}" != 'true' ]]; then clear; clear; fi
   echo -e "${GREEN}#########################################################################${RESET}\\n"
-}
-
-header_red() {
-  if [[ "${script_option_debug}" != 'true' ]]; then clear; clear; fi
-  echo -e "${RED}#########################################################################${RESET}\\n"
-}
-
-check_has_sudo() {
-  if sudo -n true 2>/dev/null; then
-    echo -e "${GREEN}#${RESET} User has sudo permissions.\\n"
-  else
-    echo "User does not have sudo permissions"
-    header_red
-    echo -e "${RED}#${RESET} This script requires sudo permissions to run. Please run the script with sudo.\\n"
-    echo -e "${RED}#${RESET} For example: sudo bash $(basename "$0")"
-    exit 1
-  fi
-}
-
-check_is_bash() {
-  if [[ -z "$BASH_VERSION" ]]; then
-    header_red
-    echo -e "${RED}#${RESET} This script requires bash to run. Please run the script using bash.\\n"
-    echo -e "${RED}#${RESET} For example: bash $(basename "$0")"
-    exit 1
-  fi
-    echo -e "${GREEN}#${RESET} This script is running in bash.\\n"
-}
-
-check_is_arch() {
-  if [[ ! -f /etc/arch-release ]]; then
-    header_red
-    echo -e "${RED}#${RESET} This script is designed to run on Arch-based systems only.\\n"
-    echo -e "${RED}#${RESET} Please run this script on an Arch-based system (e.g. Omarchy) and try again."
-    exit 1
-  fi
-    echo -e "${GREEN}#${RESET} This script is running on an Arch-based system.\\n"
 }
 
 check_is_x86_64() {
@@ -216,15 +169,6 @@ ensure_docker_installed() {
   fi
 }
 
-check_docker_compose() {
-  # Check if 'docker compose' (v2 plugin) is available
-  if ! docker compose version &>/dev/null; then
-    echo -e "${RED}#${RESET} Docker Compose v2 is not installed or not available as a Docker plugin."
-    echo -e "${YELLOW}#${RESET} This script requires 'docker compose' (v2), not 'docker-compose' (v1)."
-    echo -e "${YELLOW}#${RESET} Please read the Docker documentation at https://docs.docker.com/compose/install/ for instructions on how to install Docker Compose v2."
-    exit 1
-  fi
-}
 
 setup_nvidia_container_toolkit() {
   # This function attempts to set up NVIDIA GPU support but is non-blocking
@@ -461,21 +405,6 @@ start_management_containers() {
   echo -e "${GREEN}#${RESET} Management containers started successfully.\\n"
 }
 
-get_local_ip() {
-  # Arch's hostname (inetutils) has no -I flag, so derive the LAN source IP
-  # from the routing table instead (lookup only, no traffic is sent).
-  if command -v ip &> /dev/null; then
-    local_ip_address=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "src") { print $(i+1); exit } }')
-  fi
-  # Fallback for systems whose hostname does understand -I.
-  if [[ -z "$local_ip_address" ]]; then
-    local_ip_address=$(hostname -I 2>/dev/null | awk '{print $1}')
-  fi
-  if [[ -z "$local_ip_address" ]]; then
-    echo -e "${RED}#${RESET} Unable to determine local IP address. Please check your network configuration."
-    exit 1
-  fi
-}
 verify_gpu_setup() {
   # This function only displays GPU setup status and is completely non-blocking
   # It never exits or returns error codes - purely informational
