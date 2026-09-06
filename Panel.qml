@@ -17,6 +17,7 @@ Panel {
   property string lastError: ""
   property bool purgeData: false
   property bool actionRunning: false
+  property bool statusFailed: false
 
   readonly property string glyph: ""
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -115,6 +116,16 @@ Panel {
   Process {
     id: statusProc
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.parseState(text) }
+    stderr: StdioCollector { id: statusStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      if (exitCode === 0) {
+        if (root.statusFailed) { root.statusFailed = false; root.lastError = ""; }
+      } else {
+        root.statusFailed = true;
+        root.nomadState = "unknown";
+        root.lastError = root.errorTail(statusStderr.text) || ("Status check failed (exit " + exitCode + ").");
+      }
+    }
   }
 
   Process {
