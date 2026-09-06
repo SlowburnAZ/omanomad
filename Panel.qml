@@ -23,6 +23,11 @@ Panel {
   // Child components (Information Library, AI Assistant, ...) reported by
   // the Command Center API; best-effort, only rendered while running.
   property var components: []
+  // Not-installed catalog entries stay collapsed behind a disclosure row
+  // so the panel shows state, not a 13-row wall of dim text.
+  property bool showAvailable: false
+  readonly property var installedComponents: components.filter(function(c) { return c.installed; })
+  readonly property var availableComponents: components.filter(function(c) { return !c.installed; })
 
   readonly property string glyph: ""
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -320,14 +325,13 @@ Panel {
           }
 
           Repeater {
-            model: root.nomadState === "running" ? root.components : []
+            model: root.nomadState === "running" ? root.installedComponents : []
             delegate: Row {
               required property var modelData
               width: parent.width
               spacing: Style.space(8)
 
               Rectangle {
-                visible: modelData.installed
                 width: Style.space(8)
                 height: Style.space(8)
                 radius: Style.space(4)
@@ -338,16 +342,52 @@ Panel {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width - Style.space(16)
-                text: modelData.installed
-                  ? modelData.name + " — " + modelData.status
-                  : modelData.name + " — not installed"
-                color: !modelData.installed || modelData.status === "running" ? root.dim : root.urgent
+                text: modelData.name + " — " + modelData.status
+                color: modelData.status === "running" ? root.dim : root.urgent
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 wrapMode: Text.NoWrap
                 elide: Text.ElideRight
                 anchors.verticalCenter: parent.verticalCenter
               }
+            }
+          }
+
+          Row {
+            visible: root.nomadState === "running" && root.availableComponents.length > 0
+            width: parent.width
+            spacing: Style.space(8)
+
+            Text {
+              textFormat: Text.PlainText
+              text: (root.showAvailable ? "▾" : "▸") + " Available (" + root.availableComponents.length + ")"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.NoWrap
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.showAvailable = !root.showAvailable;
+            }
+          }
+
+          Repeater {
+            model: root.nomadState === "running" && root.showAvailable ? root.availableComponents : []
+            delegate: Text {
+              required property var modelData
+              textFormat: Text.PlainText
+              width: parent.width - Style.space(16)
+              leftPadding: Style.space(16)
+              text: modelData.name
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.NoWrap
+              elide: Text.ElideRight
             }
           }
 
