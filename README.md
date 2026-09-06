@@ -24,16 +24,15 @@ The NOMAD widget appears in the bar (right section). Open it and press
 Disconnect before installing, updating, or running: the panel detects a
 running stack by polling `http://localhost:8080/api/health`, and some VPN
 clients (observed with Nym) break localhost HTTP entirely — the panel then
-reports stopped forever and Start looks dead (it isn't; the containers come
-up fine). The installer also derives the printed LAN URL from the default
-route, so it shows the VPN endpoint instead of the LAN address while
-connected.
+shows an unreachable-health error with a disconnect hint instead of a state.
+The installer also derives the printed LAN URL from the default route, so it
+shows the VPN endpoint instead of the LAN address while connected.
 
 ## What the panel does
 
 | UI action           | Command run                                                  |
 |---------------------|--------------------------------------------------------------|
-| Status polling      | `bin/status.sh` (unprivileged, every `refreshIntervalSec`)   |
+| Status polling      | `bin/status.sh` (unprivileged, every `refreshIntervalSec`; exit 2 + reason when unobservable) |
 | Install             | floating terminal: `pkexec bash bin/install.sh`             |
 | Start               | `pkexec bash bin/start.sh`                                   |
 | Stop                | `pkexec bash bin/stop.sh`                                    |
@@ -43,7 +42,7 @@ connected.
 | …with purge         | same, with `--purge-data` (second confirm)                   |
 
 `pkexec` (not `sudo`) is used because the panel has no terminal for a
-password prompt. Install/uninstall run in a floating terminal so their
+password prompt. Install/update/uninstall run in a floating terminal so their
 interactive prompts (confirmation, license) work.
 
 ## Uninstall and `--purge-data`
@@ -73,6 +72,11 @@ Arch port of upstream `install/install_nomad.sh` (Debian-only upstream):
 - No firewall rules (nothing blocks `localhost:8080` by default)
 - Upstream's dead commented-out `free_space_check()` not ported
   (references another project's files)
+
+Stack update is an Arch port of upstream `install/update_nomad.sh` (v1.0.1)
+with the same adaptations (Arch gate, `ip`-first LAN discovery,
+`sudo`-prefixed compose calls). Shared pre-flight checks, colors, and LAN
+discovery live once in `bin/lib/preflight.sh`, sourced by both scripts.
 
 ## License
 
