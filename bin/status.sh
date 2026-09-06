@@ -21,12 +21,15 @@ fi
 
 health_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$HEALTH_URL")"
 curl_status=$?
-if [[ $curl_status -eq 7 ]]; then
-  # Refused: loopback itself works, nothing listens — observed stopped,
-  # not an observation failure. (Other curl errors stay exit 2 below.)
-  echo "stopped"
-  exit 0
-fi
+case $curl_status in
+  7|52|56)
+    # 7 refused: loopback works, nothing listens. 52/56 empty reply or
+    # recv failure: something listens but resets, e.g. stack starting up.
+    # Both are observed not-healthy, not observation failures.
+    echo "stopped"
+    exit 0
+    ;;
+esac
 if [[ $curl_status -ne 0 ]]; then
   echo "Command Center health check unreachable at ${HEALTH_URL} (curl exit ${curl_status})." >&2
   echo "If a VPN is connected, disconnect and retry — VPN clients can break localhost traffic." >&2
