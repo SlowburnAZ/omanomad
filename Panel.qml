@@ -243,7 +243,7 @@ Panel {
               width: parent.width
               text: modelData.text
               selected: !!modelData.primary
-              foreground: modelData.danger ? root.urgent : undefined
+              foreground: modelData.danger ? root.urgent : root.foreground
               enabled: modelData.enabled !== false && (!modelData.needsIdle || !root.actionRunning)
               fontFamily: root.fontFamily
               onClicked: root.performAction(modelData.id)
