@@ -25,21 +25,25 @@ Disconnect before installing, updating, or running: the panel detects a
 running stack by polling `http://localhost:8080/api/health`, and some VPN
 clients (observed with Nym) break localhost HTTP entirely — the panel then
 shows an unreachable-health error with a disconnect hint instead of a state.
+A refused or reset connection simply reports stopped (nothing listening yet,
+or the stack still starting); the hint only fires on genuine observability
+failures such as timeouts.
 The installer also derives the printed LAN URL from the default route, so it
 shows the VPN endpoint instead of the LAN address while connected.
 
 ## What the panel does
 
-| UI action           | Command run                                                  |
-|---------------------|--------------------------------------------------------------|
-| Status polling      | `bin/status.sh` (unprivileged, every `refreshIntervalSec`; exit 2 + reason when unobservable) |
-| Install             | floating terminal: `pkexec bash bin/install.sh`             |
-| Start               | `pkexec bash bin/start.sh`                                   |
-| Stop                | `pkexec bash bin/stop.sh`                                    |
-| Update              | floating terminal: `pkexec bash bin/update.sh` (confirm)     |
-| Open Command Center | browser at `http://localhost:8080`                           |
-| Uninstall…          | floating terminal: `pkexec bash bin/uninstall.sh` (confirm)  |
-| …with purge         | same, with `--purge-data` (second confirm)                   |
+| UI action                | Command run                                                  |
+|--------------------------|--------------------------------------------------------------|
+| Status polling           | `bin/status.sh` (unprivileged; every `refreshIntervalSec` in panel, every 2 min for the bar icon; refused/reset health (curl 7/52/56) counts as stopped, other curl failures exit 2 + reason) |
+| Retry status check       | re-runs `bin/status.sh` immediately (unknown state)          |
+| Install                  | floating terminal: `pkexec bash bin/install.sh`              |
+| Start                    | `pkexec bash bin/start.sh` (fast re-poll burst after exit)   |
+| Stop                     | `pkexec bash bin/stop.sh` (fast re-poll burst after exit)    |
+| Stack update             | floating terminal: `pkexec bash bin/update.sh` (confirm)     |
+| Open Command Center      | browser at `http://localhost:8080`                           |
+| Uninstall… (keep data)   | floating terminal: `pkexec bash bin/uninstall.sh` (confirm)  |
+| Uninstall + delete data… | floating terminal: `pkexec bash bin/uninstall.sh --purge-data` (confirm) |
 
 `pkexec` (not `sudo`) is used because the panel has no terminal for a
 password prompt. Install/update/uninstall run in a floating terminal so their

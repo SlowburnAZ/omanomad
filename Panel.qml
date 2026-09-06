@@ -16,6 +16,9 @@ Panel {
   property string lastError: ""
   property string notice: ""
   property bool actionRunning: false
+  // Fast re-poll burst after a privileged action exits: the stack needs a
+  // few seconds to move stopped <-> running.
+  property int burstLeft: 0
   property bool statusFailed: false
 
   readonly property string glyph: ""
@@ -27,8 +30,8 @@ Panel {
   readonly property color barIconColor: nomadState === "running" ? barForeground : Qt.darker(barForeground, 1.55)
   readonly property string stateText: nomadState === "running" ? "Command Center running"
     : nomadState === "stopped" ? "Installed — stopped"
-    : nomadState === "not-installed" ? "Not installed" : "Checking…"
-  readonly property int pollIntervalMs: Math.max(5, root.setting("refreshIntervalSec", 30)) * 1000
+    : nomadState === "not-installed" ? "Not installed"
+    : root.statusFailed ? "Unreachable" : "Checking…"
 
   // Scripts live beside this file; resolve relative to it, never via a
   // hardcoded ~/.config path.
@@ -70,6 +73,7 @@ Panel {
 
   function runInTerminal(script, args) {
     if (!root.bar) return;
+    root.lastError = "";
     var cmd = "omarchy-launch-floating-terminal-with-presentation pkexec bash "
       + shellQuote(scriptPath(script)) + (args ? " " + args : "");
     root.bar.run(cmd);
@@ -145,15 +149,29 @@ Panel {
     onExited: function(exitCode) {
       root.actionRunning = false;
       if (exitCode !== 0) root.lastError = root.errorTail(actionStderr.text);
+      else root.burstLeft = 3;
       root.refresh();
     }
   }
 
+  // Slow background poll keeps the bar icon honest while closed; the open
+  // panel polls at refreshIntervalSec, plus burstTimer after Start/Stop.
   Timer {
-    interval: root.pollIntervalMs
-    running: root.opened
+    interval: root.opened ? root.pollIntervalMs : 120000
+    running: true
     repeat: true
     onTriggered: root.refresh()
+  }
+
+  Timer {
+    id: burstTimer
+    interval: 5000
+    repeat: true
+    running: root.opened && root.burstLeft > 0
+    onTriggered: {
+      root.burstLeft--;
+      root.refresh();
+    }
   }
 
   IpcHandler {
@@ -245,6 +263,32 @@ Panel {
               }
             }
           }
+          Row {
+            visible: root.nomadState === "running"
+            width: parent.width
+            spacing: Style.space(8)
+
+            Rectangle {
+              width: Style.space(8)
+              height: Style.space(8)
+              radius: Style.space(4)
+              color: root.foreground
+              anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+              textFormat: Text.RichText
+              text: '<a href="http://localhost:8080">localhost:8080</a> — Command Center'
+              color: root.dim
+              linkColor: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.WordWrap
+              anchors.verticalCenter: parent.verticalCenter
+              onLinkActivated: function(link) { Qt.openUrlExternally(link); }
+            }
+          }
+
 
           Text {
             textFormat: Text.PlainText
@@ -288,7 +332,7 @@ Panel {
               text: modelData.text
               selected: !!modelData.primary
               foreground: modelData.danger ? root.urgent : root.foreground
-              enabled: modelData.enabled !== false && (!modelData.needsIdle || !root.actionRunning)
+              enabled: !modelData.needsIdle || !root.actionRunning
               fontFamily: root.fontFamily
               onClicked: root.performAction(modelData.id)
             }
