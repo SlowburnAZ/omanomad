@@ -27,6 +27,7 @@ The NOMAD widget appears in the bar (right section). Open it and press
 | Install             | floating terminal: `pkexec bash bin/install.sh`             |
 | Start               | `pkexec bash bin/start.sh`                                   |
 | Stop                | `pkexec bash bin/stop.sh`                                    |
+| Update              | floating terminal: `pkexec bash bin/update.sh` (confirm)     |
 | Open Command Center | browser at `http://localhost:8080`                           |
 | Uninstall…          | floating terminal: `pkexec bash bin/uninstall.sh` (confirm)  |
 | …with purge         | same, with `--purge-data` (second confirm)                   |

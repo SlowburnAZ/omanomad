@@ -251,6 +251,14 @@ Panel {
             fontFamily: root.fontFamily
           }
 
+          Button {
+            visible: root.nomadState === "stopped" || root.nomadState === "running"
+            width: parent.width
+            text: "Update"
+            fontFamily: root.fontFamily
+            onClicked: root.runInTerminal("update.sh", "")
+          }
+
           RowLayout {
             visible: root.nomadState === "stopped" || root.nomadState === "running"
             width: parent.width
