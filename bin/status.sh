@@ -21,6 +21,12 @@ fi
 
 health_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "$HEALTH_URL")"
 curl_status=$?
+if [[ $curl_status -eq 7 ]]; then
+  # Refused: loopback itself works, nothing listens — observed stopped,
+  # not an observation failure. (Other curl errors stay exit 2 below.)
+  echo "stopped"
+  exit 0
+fi
 if [[ $curl_status -ne 0 ]]; then
   echo "Command Center health check unreachable at ${HEALTH_URL} (curl exit ${curl_status})." >&2
   echo "If a VPN is connected, disconnect and retry — VPN clients can break localhost traffic." >&2
