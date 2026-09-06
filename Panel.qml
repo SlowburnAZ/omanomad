@@ -58,14 +58,15 @@ Panel {
   }
 
   function parseComponents(text) {
-    var rows = [];
+    var installed = [], available = [];
     var lines = String(text || "").trim().split("\n");
     for (var i = 0; i < lines.length; i++) {
       var f = lines[i].split("|");
-      if (f.length >= 3 && f[0] !== "")
-        rows.push({ name: f[0], installed: f[1] === "1", status: f[2] });
+      if (f.length < 3 || f[0] === "") continue;
+      var row = { name: f[0], installed: f[1] === "1", status: f[2] };
+      (row.installed ? installed : available).push(row);
     }
-    root.components = rows;
+    root.components = installed.concat(available);
   }
 
   function parseState(text) {
