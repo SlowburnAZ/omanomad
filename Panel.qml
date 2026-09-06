@@ -29,7 +29,7 @@ Panel {
   readonly property var installedComponents: components.filter(function(c) { return c.installed; })
   readonly property var availableComponents: components.filter(function(c) { return !c.installed; })
 
-  readonly property string glyph: ""
+  readonly property int pollIntervalMs: Math.max(5, root.setting("refreshIntervalSec", 30) || 30) * 1000
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
@@ -356,7 +356,6 @@ Panel {
           Row {
             visible: root.nomadState === "running" && root.availableComponents.length > 0
             width: parent.width
-            spacing: Style.space(8)
 
             Text {
               textFormat: Text.PlainText
@@ -365,13 +364,12 @@ Panel {
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
               wrapMode: Text.NoWrap
-              anchors.verticalCenter: parent.verticalCenter
-            }
 
-            MouseArea {
-              anchors.fill: parent
-              cursorShape: Qt.PointingHandCursor
-              onClicked: root.showAvailable = !root.showAvailable;
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.showAvailable = !root.showAvailable;
+              }
             }
           }
 
