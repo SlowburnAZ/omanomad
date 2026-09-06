@@ -20,6 +20,9 @@ Panel {
   // few seconds to move stopped <-> running.
   property int burstLeft: 0
   property bool statusFailed: false
+  // Child components (Information Library, AI Assistant, ...) reported by
+  // the Command Center API; best-effort, only rendered while running.
+  property var components: []
 
   readonly property string glyph: ""
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -48,6 +51,21 @@ Panel {
       statusProc.command = [scriptPath("status.sh")];
       statusProc.running = true;
     }
+    if (!componentsProc.running) {
+      componentsProc.command = [scriptPath("components.sh")];
+      componentsProc.running = true;
+    }
+  }
+
+  function parseComponents(text) {
+    var rows = [];
+    var lines = String(text || "").trim().split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var f = lines[i].split("|");
+      if (f.length >= 3 && f[0] !== "")
+        rows.push({ name: f[0], installed: f[1] === "1", status: f[2] });
+    }
+    root.components = rows;
   }
 
   function parseState(text) {
@@ -150,7 +168,16 @@ Panel {
       root.actionRunning = false;
       if (exitCode !== 0) root.lastError = root.errorTail(actionStderr.text);
       else root.burstLeft = 3;
+
       root.refresh();
+    }
+  }
+
+  Process {
+    id: componentsProc
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.parseComponents(text) }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) root.components = [];
     }
   }
 
@@ -291,6 +318,37 @@ Panel {
             }
           }
 
+          Repeater {
+            model: root.nomadState === "running" ? root.components : []
+            delegate: Row {
+              required property var modelData
+              width: parent.width
+              spacing: Style.space(8)
+
+              Rectangle {
+                visible: modelData.installed
+                width: Style.space(8)
+                height: Style.space(8)
+                radius: Style.space(4)
+                color: modelData.status === "running" ? root.foreground : root.urgent
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width - Style.space(16)
+                text: modelData.installed
+                  ? modelData.name + " — " + modelData.status
+                  : modelData.name + " — not installed"
+                color: !modelData.installed || modelData.status === "running" ? root.dim : root.urgent
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                wrapMode: Text.NoWrap
+                elide: Text.ElideRight
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+          }
 
           Text {
             textFormat: Text.PlainText
