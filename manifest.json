@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "omanomad",
+  "name": "Project NOMAD",
+  "version": "0.1.0",
+  "author": "SlowburnAZ",
+  "license": "MIT",
+  "description": "Install, start, stop, and open the Project NOMAD offline knowledge server.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "NOMAD",
+    "description": "Project NOMAD control panel",
+    "category": "Services",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalSec": 30
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Refresh interval (seconds)",
+        "min": 5,
+        "max": 3600,
+        "step": 5,
+        "defaultValue": 30
+      }
+    ]
+  }
+}
