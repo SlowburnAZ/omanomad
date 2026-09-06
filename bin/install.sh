@@ -128,6 +128,11 @@ ensure_dependencies_installed() {
     missing_pkgs+=("pciutils")
   fi
 
+  # Check for ip (Arch package: iproute2; used for LAN IP discovery)
+  if ! command -v ip &> /dev/null; then
+    missing_pkgs+=("iproute2")
+  fi
+
   # Check for jq (used for the NVIDIA daemon.json fallback)
   if ! command -v jq &> /dev/null; then
     missing_pkgs+=("jq")
@@ -138,7 +143,7 @@ ensure_dependencies_installed() {
     sudo pacman -S --needed --noconfirm "${missing_pkgs[@]}"
 
     # Verify installation
-    for cmd in curl gpg lspci jq; do
+    for cmd in curl gpg lspci ip jq; do
       if ! command -v "$cmd" &> /dev/null; then
         echo -e "${RED}#${RESET} Failed to install $cmd. Please install it manually and try again."
         exit 1
@@ -457,7 +462,15 @@ start_management_containers() {
 }
 
 get_local_ip() {
-  local_ip_address=$(hostname -I | awk '{print $1}')
+  # Arch's hostname (inetutils) has no -I flag, so derive the LAN source IP
+  # from the routing table instead (lookup only, no traffic is sent).
+  if command -v ip &> /dev/null; then
+    local_ip_address=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "src") { print $(i+1); exit } }')
+  fi
+  # Fallback for systems whose hostname does understand -I.
+  if [[ -z "$local_ip_address" ]]; then
+    local_ip_address=$(hostname -I 2>/dev/null | awk '{print $1}')
+  fi
   if [[ -z "$local_ip_address" ]]; then
     echo -e "${RED}#${RESET} Unable to determine local IP address. Please check your network configuration."
     exit 1
