@@ -28,6 +28,7 @@ Panel {
   property bool showAvailable: false
   readonly property var installedComponents: components.filter(function(c) { return c.installed; })
   readonly property var availableComponents: components.filter(function(c) { return !c.installed; })
+  readonly property int pollIntervalMs: Math.max(5, root.setting("refreshIntervalSec", 30) || 30) * 1000
 
   readonly property color accent: Color.accent
   readonly property color foreground: bar ? bar.foreground : Color.foreground
