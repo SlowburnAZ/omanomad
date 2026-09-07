@@ -38,7 +38,7 @@ shows the VPN endpoint instead of the LAN address while connected.
 | Status polling           | `bin/status.sh` (unprivileged; every `refreshIntervalSec` in panel, every 2 min for the bar icon; refused/reset health (curl 7/52/56) counts as stopped, other curl failures exit 2 + reason) |
 | Retry status check       | re-runs `bin/status.sh` immediately (unknown state)          |
 | Install                  | floating terminal: `pkexec bash bin/install.sh`              |
-| Start                    | `pkexec bash bin/start.sh` (fast re-poll burst after exit)   |
+| Start                    | `pkexec bash bin/start.sh` (fast re-poll burst after exit; restarts installed components once the Command Center is healthy) |
 | Stop                     | `pkexec bash bin/stop.sh` (fast re-poll burst after exit)    |
 | Stack update             | floating terminal: `pkexec bash bin/update.sh` (confirm)     |
 | Open Command Center      | browser at `http://localhost:8080`                           |
