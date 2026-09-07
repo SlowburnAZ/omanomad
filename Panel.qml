@@ -69,12 +69,14 @@ Panel {
       var f = lines[i].split("|");
       if (f.length < 3 || f[0] === "") continue;
       var loc = f.length > 3 ? f[3] : "-";
-      // ui_location is a bare port ("8090") or a path ("/chat"); "-"/empty
-      // means the component exposes no UI of its own.
-      var link = loc && loc !== "-" && loc !== "null"
-        ? (loc.charAt(0) === "/" ? "http://localhost:8080" + loc
-                                 : "http://localhost:" + loc)
-        : "";
+      // ui_location is a bare port ("8090"), an https port ("https:8480"),
+      // or a path ("/chat"); "-"/empty means no UI of its own.
+      var link = "";
+      if (loc && loc !== "-" && loc !== "null") {
+        if (loc.indexOf("https:") === 0) link = "https://localhost:" + loc.slice(6);
+        else if (loc.charAt(0) === "/") link = "http://localhost:8080" + loc;
+        else link = "http://localhost:" + loc;
+      }
       var row = { name: f[0], installed: f[1] === "1", status: f[2], link: link };
       (row.installed ? installed : available).push(row);
     }
