@@ -13,6 +13,10 @@ omarchy plugin add https://github.com/SlowburnAZ/omanomad --enable
 The NOMAD widget appears in the bar (right section). Open it and press
 **Install Project NOMAD**.
 
+To remove the plugin itself: `omarchy plugin remove omanomad`. The NOMAD
+stack stays installed until you uninstall it from the panel (see
+[Uninstall and `--purge-data`](#uninstall-and---purge-data)).
+
 ## Requirements
 
 - Arch-based system (Omarchy), `x86_64` (other architectures warn and continue, upstream images are x86_64-only)
