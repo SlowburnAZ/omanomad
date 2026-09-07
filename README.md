@@ -1,4 +1,4 @@
-# omanomad — Project NOMAD for Omarchy
+# OmaNomad — Project NOMAD for Omarchy
 
 Omarchy shell bar-widget plugin: install, start, stop, and open the
 [Project NOMAD](https://github.com/Crosstalk-Solutions/project-nomad)
