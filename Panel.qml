@@ -35,10 +35,11 @@ Panel {
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property string stateText: nomadState === "running" ? "Command Center running"
-    : nomadState === "stopped" ? "Installed — stopped"
-    : nomadState === "not-installed" ? "Not installed"
-    : root.statusFailed ? "Unreachable" : "Checking…"
+  readonly property string stateText: nomadState === "running"
+    ? "running · " + installedComponents.length + " component" + (installedComponents.length === 1 ? "" : "s")
+    : nomadState === "stopped" ? "stopped"
+    : nomadState === "not-installed" ? "not installed"
+    : root.statusFailed ? "unreachable" : "checking…"
 
   // Scripts live beside this file; resolve relative to it, never via a
   // hardcoded ~/.config path.
@@ -117,24 +118,34 @@ Panel {
     return lines.slice(Math.max(0, lines.length - 5)).join("\n");
   }
 
-  // Single source of truth for state -> visible actions. Array order is
-  // render order; `states` filters per nomadState. Dialogs stay outside:
-  // single instances with no repetition to absorb. Uninstall is two
-  // explicit actions so the destructive purge choice never lingers as
-  // a sticky toggle.
+  // Single source of truth for state -> visible actions. `group` picks the
+  // render slot: primary full-width, controls pair, destructive pair.
+  // Dialogs stay outside: single instances with no repetition to absorb.
   property var actionDefs: [
-    { id: "install", text: "Install Project NOMAD", states: ["not-installed"], primary: true },
-    { id: "retry", text: "Retry status check", states: ["unknown"], primary: true },
-    { id: "open", text: "Open Command Center", states: ["running"], primary: true },
-    { id: "start", text: "Start", states: ["stopped"], primary: true, needsIdle: true },
-    { id: "stop", text: "Stop", states: ["running"], needsIdle: true },
-    { id: "update", text: "Stack update", states: ["stopped", "running"] },
-    { id: "uninstall", text: "Uninstall…", states: ["stopped", "running"] },
-    { id: "uninstallPurge", text: "Uninstall + delete data…", states: ["stopped", "running"], danger: true }
+    { id: "install", text: "Install Project NOMAD", states: ["not-installed"], group: "primary" },
+    { id: "retry", text: "Retry status check", states: ["unknown"], group: "primary" },
+    { id: "open", text: "Open Command Center", states: ["running"], group: "primary" },
+    { id: "start", text: "Start", states: ["stopped"], group: "controls", needsIdle: true },
+    { id: "stop", text: "Stop", states: ["running"], group: "controls", needsIdle: true },
+    { id: "update", text: "Stack update", states: ["stopped", "running"], group: "controls" },
+    { id: "uninstall", text: "Uninstall", states: ["stopped", "running"], group: "danger" },
+    { id: "uninstallPurge", text: "Uninstall + delete data", states: ["stopped", "running"], group: "danger" }
   ]
 
   function actionVisible(def) {
     return def.states.indexOf(root.nomadState) !== -1;
+  }
+
+  function actionsIn(group) {
+    return root.actionDefs.filter(function(def) {
+      return def.group === group && root.actionVisible(def);
+    });
+  }
+
+  function statusWord(status) {
+    return status === "running" ? "up"
+      : status === "stopped" ? "down"
+      : status === "unknown" ? "?" : status;
   }
 
   function performAction(id) {
@@ -302,23 +313,26 @@ Panel {
                 width: height * 0.87
                 fillMode: Image.PreserveAspectFit
                 mipmap: true
-              }
             }
           }
-          Row {
+
+          Item {
             visible: root.nomadState === "running"
             width: parent.width
-            spacing: Style.space(8)
+            height: Style.space(16)
 
             Rectangle {
+              id: ccDot
               width: Style.space(8)
               height: Style.space(8)
               radius: Style.space(4)
               color: root.accent
+              anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
             }
 
             Text {
+              id: ccName
               textFormat: Text.PlainText
               text: "Command Center"
               color: root.dim
@@ -327,7 +341,10 @@ Panel {
               font.pixelSize: Style.font.bodySmall
               wrapMode: Text.NoWrap
               elide: Text.ElideRight
-              width: parent.width - Style.space(16)
+              anchors.left: ccDot.right
+              anchors.leftMargin: Style.space(8)
+              anchors.right: ccStatus.left
+              anchors.rightMargin: Style.space(8)
               anchors.verticalCenter: parent.verticalCenter
 
               MouseArea {
@@ -337,34 +354,50 @@ Panel {
                 onClicked: Qt.openUrlExternally("http://localhost:8080");
               }
             }
+
+            Text {
+              id: ccStatus
+              textFormat: Text.PlainText
+              text: "up"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+            }
           }
 
           Repeater {
             model: root.nomadState === "running" ? root.installedComponents : []
-            delegate: Row {
+            delegate: Item {
               required property var modelData
               width: parent.width
-              spacing: Style.space(8)
+              height: Style.space(16)
 
               Rectangle {
+                id: compDot
                 width: Style.space(8)
                 height: Style.space(8)
                 radius: Style.space(4)
                 color: modelData.status === "running" ? root.accent : root.urgent
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
               }
 
               Text {
+                id: compName
                 textFormat: Text.PlainText
                 text: modelData.name
-                  + (modelData.status === "running" ? "" : " — " + modelData.status)
                 color: modelData.status === "running" ? root.dim : root.urgent
                 font.underline: modelData.link !== ""
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 wrapMode: Text.NoWrap
                 elide: Text.ElideRight
-                width: parent.width - Style.space(16)
+                anchors.left: compDot.right
+                anchors.leftMargin: Style.space(8)
+                anchors.right: compStatus.left
+                anchors.rightMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
 
                 MouseArea {
@@ -375,8 +408,20 @@ Panel {
                   onClicked: Qt.openUrlExternally(modelData.link);
                 }
               }
+
+              Text {
+                id: compStatus
+                textFormat: Text.PlainText
+                text: root.statusWord(modelData.status)
+                color: modelData.status === "running" ? root.dim : root.urgent
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+              }
             }
           }
+
           Row {
             visible: root.nomadState === "running" && root.availableComponents.length > 0
             width: parent.width
@@ -446,18 +491,57 @@ Panel {
             wrapMode: Text.WordWrap
           }
 
+          Rectangle {
+            width: parent.width
+            height: 1
+            color: Util.alpha(root.foreground, 0.14)
+          }
+
           Repeater {
-            model: root.actionDefs
+            model: root.actionsIn("primary")
             delegate: Button {
               required property var modelData
-              visible: root.actionVisible(modelData)
               width: parent.width
               text: modelData.text
-              selected: !!modelData.primary
-              foreground: modelData.danger ? root.urgent : root.foreground
-              enabled: !modelData.needsIdle || !root.actionRunning
+              selected: true
+              foreground: root.foreground
               fontFamily: root.fontFamily
               onClicked: root.performAction(modelData.id)
+            }
+          }
+
+          Row {
+            width: parent.width
+            spacing: Style.space(8)
+
+            Repeater {
+              model: root.actionsIn("controls")
+              delegate: Button {
+                required property var modelData
+                width: (parent.width - Style.space(8)) / 2
+                text: modelData.text
+                foreground: root.foreground
+                enabled: !modelData.needsIdle || !root.actionRunning
+                fontFamily: root.fontFamily
+                onClicked: root.performAction(modelData.id)
+              }
+            }
+          }
+
+          Row {
+            width: parent.width
+            spacing: Style.space(8)
+
+            Repeater {
+              model: root.actionsIn("danger")
+              delegate: Button {
+                required property var modelData
+                width: (parent.width - Style.space(8)) / 2
+                text: modelData.text
+                foreground: root.urgent
+                fontFamily: root.fontFamily
+                onClicked: root.performAction(modelData.id)
+              }
             }
           }
 
