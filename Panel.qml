@@ -30,7 +30,7 @@ Panel {
   readonly property var availableComponents: components.filter(function(c) { return !c.installed; })
 
   readonly property string glyph: ""
-  readonly property color accent: bar ? bar.accent : Color.accent
+  readonly property color accent: Color.accent
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
