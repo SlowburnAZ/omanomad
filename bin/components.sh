@@ -22,6 +22,5 @@ catalog="$(printf '%s' "$page" \
   | sed 's/&quot;/"/g; s/&#039;/'"'"'/g; s/&lt;/</g; s/&gt;/>/g; s/&amp;/\&/g')"
 [[ -n "$catalog" ]] || { echo "No data-page payload found on supply-depot page." >&2; exit 2; }
 
-jq -r '.props.system.services[] | [.friendly_name, .installed, .status] | @tsv' <<< "$catalog" \
+jq -r '.props.system.services[] | [.friendly_name, .installed, .status, (.ui_location // "-")] | @tsv' <<< "$catalog" \
   | tr '\t' '|' || { echo "Unexpected supply-depot payload shape." >&2; exit 2; }
-exit 0

@@ -30,7 +30,7 @@ Panel {
   readonly property var availableComponents: components.filter(function(c) { return !c.installed; })
 
   readonly property string glyph: ""
-  readonly property int pollIntervalMs: Math.max(5, root.setting("refreshIntervalSec", 30) || 30) * 1000
+  readonly property color accent: bar ? bar.accent : Color.accent
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
@@ -69,7 +69,14 @@ Panel {
     for (var i = 0; i < lines.length; i++) {
       var f = lines[i].split("|");
       if (f.length < 3 || f[0] === "") continue;
-      var row = { name: f[0], installed: f[1] === "1", status: f[2] };
+      var loc = f.length > 3 ? f[3] : "-";
+      // ui_location is a bare port ("8090") or a path ("/chat"); "-"/empty
+      // means the component exposes no UI of its own.
+      var link = loc && loc !== "-" && loc !== "null"
+        ? (loc.charAt(0) === "/" ? "http://localhost:8080" + loc
+                                 : "http://localhost:" + loc)
+        : "";
+      var row = { name: f[0], installed: f[1] === "1", status: f[2], link: link };
       (row.installed ? installed : available).push(row);
     }
     root.components = installed.concat(available);
@@ -306,13 +313,13 @@ Panel {
               width: Style.space(8)
               height: Style.space(8)
               radius: Style.space(4)
-              color: root.foreground
+              color: root.accent
               anchors.verticalCenter: parent.verticalCenter
             }
 
             Text {
               textFormat: Text.RichText
-              text: '<a href="http://localhost:8080">localhost:8080</a> — Command Center'
+              text: '<a href="http://localhost:8080">Command Center</a>'
               color: root.dim
               linkColor: root.foreground
               font.family: root.fontFamily
@@ -336,24 +343,28 @@ Panel {
                 width: Style.space(8)
                 height: Style.space(8)
                 radius: Style.space(4)
-                color: modelData.status === "running" ? root.foreground : root.urgent
+                color: modelData.status === "running" ? root.accent : root.urgent
                 anchors.verticalCenter: parent.verticalCenter
               }
 
               Text {
-                textFormat: Text.PlainText
-                width: parent.width - Style.space(16)
-                text: modelData.name + " — " + modelData.status
+                textFormat: Text.RichText
+                text: modelData.link !== ""
+                  ? '<a href="' + modelData.link + '">' + modelData.name + '</a>'
+                    + (modelData.status === "running" ? "" : " — " + modelData.status)
+                  : modelData.name + " — " + modelData.status
                 color: modelData.status === "running" ? root.dim : root.urgent
+                linkColor: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 wrapMode: Text.NoWrap
                 elide: Text.ElideRight
+                width: parent.width - Style.space(16)
                 anchors.verticalCenter: parent.verticalCenter
+                onLinkActivated: function(link) { Qt.openUrlExternally(link); }
               }
             }
           }
-
           Row {
             visible: root.nomadState === "running" && root.availableComponents.length > 0
             width: parent.width
