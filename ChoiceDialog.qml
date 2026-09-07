@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Ui
 
 // Three-choice modal styled after the shell's ConfirmDialog: scrim, card,
 // and a row of selectable buttons. Used where two ConfirmDialog buttons
