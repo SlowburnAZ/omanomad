@@ -3,11 +3,11 @@ import qs.Commons
 import qs.Ui
 
 // Three-choice modal styled after the shell's ConfirmDialog: scrim, card,
-// message, and buttons — the two scope choices side by side with Cancel on
-// its own row beneath. Esc or clicking the scrim emits canceled(); Tab or
-// Left/Right move the selection (0 cancel, 1 keep, 2 purge); Enter
-// activates it. The destructive choice renders urgent-tinted. Buttons size
-// to their labels so no copy is clipped.
+// message, and buttons — the two scope choices side by side (centered) with
+// Cancel centered on its own row beneath. Esc or clicking the scrim emits
+// canceled(); Tab or Left/Right move the selection (0 cancel, 1 keep,
+// 2 purge); Enter activates it. The destructive choice renders
+// urgent-tinted. Buttons size to their labels so no copy is clipped.
 Item {
   id: root
 
@@ -61,7 +61,9 @@ Item {
     BorderSurface {
       id: card
       width: Math.min(parent.width - Style.space(32), Style.space(370))
-      height: card.contentTopInset + card.contentBottomInset + messageText.implicitHeight + Style.space(20) + choiceRow.height + Style.space(10) + cancelBtn.height
+      height: card.contentTopInset + card.contentBottomInset
+        + messageText.implicitHeight + Style.space(20)
+        + choiceRow.height + Style.space(10) + cancelBtn.height
       anchors.centerIn: parent
       color: root.background
       borderSpec: Border.flat(root.selectedText, Style.normalBorderWidth)
@@ -90,24 +92,56 @@ Item {
           wrapMode: Text.WordWrap
         }
 
+        BorderSurface {
+          id: cancelBtn
+          readonly property bool selected: root.selectedIndex === 0
+
+          width: Math.max(Style.space(72), cancelLabel.implicitWidth + Style.space(18))
+          height: Style.space(34)
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.bottom: parent.bottom
+          color: selected ? root.selectedBackground : "transparent"
+          borderSpec: Border.flat(selected ? root.selectedText : Util.alpha(root.foreground, 0.38), Style.normalBorderWidth)
+          radius: 0
+
+          Text {
+            id: cancelLabel
+            textFormat: Text.PlainText
+            anchors.centerIn: parent
+            text: "Cancel"
+            color: cancelBtn.selected ? root.selectedText : root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onEntered: root.selectedIndex = 0
+            onClicked: root._activate(0)
+          }
+        }
+
         Row {
           id: choiceRow
           spacing: Style.space(10)
-          anchors.right: parent.right
-          anchors.bottom: parent.bottom
+          anchors.horizontalCenter: parent.horizontalCenter
+          anchors.bottom: cancelBtn.top
+          anchors.bottomMargin: Style.space(10)
 
           BorderSurface {
             id: keepBtn
             readonly property bool selected: root.selectedIndex === 1
 
-            width: Math.max(Style.space(72), keepText.implicitWidth + Style.space(18))
+            width: Math.max(Style.space(72), keepLabel.implicitWidth + Style.space(18))
             height: Style.space(34)
             color: selected ? root.selectedBackground : "transparent"
             borderSpec: Border.flat(selected ? root.selectedText : Util.alpha(root.foreground, 0.38), Style.normalBorderWidth)
             radius: 0
 
             Text {
-              id: keepText
+              id: keepLabel
               textFormat: Text.PlainText
               anchors.centerIn: parent
               text: root.choiceText
@@ -129,14 +163,14 @@ Item {
             id: purgeBtn
             readonly property bool selected: root.selectedIndex === 2
 
-            width: Math.max(Style.space(72), purgeText.implicitWidth + Style.space(18))
+            width: Math.max(Style.space(72), purgeLabel.implicitWidth + Style.space(18))
             height: Style.space(34)
             color: selected ? Util.alpha(Color.urgent, 0.22) : "transparent"
             borderSpec: Border.flat(selected ? Color.urgent : Util.alpha(Color.urgent, 0.56), Style.normalBorderWidth)
             radius: 0
 
             Text {
-              id: purgeText
+              id: purgeLabel
               textFormat: Text.PlainText
               anchors.centerIn: parent
               text: root.destructiveText
@@ -152,38 +186,6 @@ Item {
               onEntered: root.selectedIndex = 2
               onClicked: root._activate(2)
             }
-          }
-        }
-
-        BorderSurface {
-          id: cancelBtn
-          readonly property bool selected: root.selectedIndex === 0
-
-          width: Math.max(Style.space(72), cancelText.implicitWidth + Style.space(18))
-          height: Style.space(34)
-          anchors.horizontalCenter: parent.horizontalCenter
-          anchors.top: choiceRow.bottom
-          anchors.topMargin: Style.space(10)
-          color: selected ? root.selectedBackground : "transparent"
-          borderSpec: Border.flat(selected ? root.selectedText : Util.alpha(root.foreground, 0.38), Style.normalBorderWidth)
-          radius: 0
-
-          Text {
-            id: cancelText
-            textFormat: Text.PlainText
-            anchors.centerIn: parent
-            text: "Cancel"
-            color: cancelBtn.selected ? root.selectedText : root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-          }
-
-          MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onEntered: root.selectedIndex = 0
-            onClicked: root._activate(0)
           }
         }
       }
