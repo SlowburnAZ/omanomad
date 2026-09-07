@@ -315,6 +315,7 @@ Panel {
                 mipmap: true
             }
           }
+          }
 
           Item {
             visible: root.nomadState === "running"
