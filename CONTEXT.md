@@ -17,7 +17,7 @@ Pulling the latest NOMAD container images and force-recreating the containers (`
 _Avoid_: upgrade, refresh, update (bare — ambiguous with plugin update)
 
 **Plugin update**:
-Releasing or installing a new version of omanomad itself (`omarchy plugin update omanomad`).
+Releasing or installing a new version of omanomad itself (`omarchy plugin update slowburnaz.omanomad`).
 _Avoid_: update (bare — ambiguous with stack update)
 
 **Purge**:
