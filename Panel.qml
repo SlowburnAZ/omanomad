@@ -120,28 +120,17 @@ Panel {
     return lines.slice(Math.max(0, lines.length - 5)).join("\n");
   }
 
-  // Single source of truth for state -> visible actions. `group` picks the
-  // render slot: primary full-width, controls pair, destructive pair.
-  // Dialogs stay outside: single instances with no repetition to absorb.
+  // Remaining button actions (Install / Retry / Open). Start/Stop, Stack
+  // update, and Uninstall live in the hero's icon rail instead. Dialogs
+  // stay outside: single instances with no repetition to absorb.
   property var actionDefs: [
-    { id: "install", text: "Install Project NOMAD", states: ["not-installed"], group: "primary" },
-    { id: "retry", text: "Retry status check", states: ["unknown"], group: "primary" },
-    { id: "open", text: "Open Command Center", states: ["running"], group: "primary" },
-    { id: "start", text: "Start", states: ["stopped"], group: "controls", needsIdle: true },
-    { id: "stop", text: "Stop", states: ["running"], group: "controls", needsIdle: true },
-    { id: "update", text: "Stack update", states: ["stopped", "running"], group: "controls" },
-    { id: "uninstall", text: "Uninstall", states: ["stopped", "running"], group: "danger" },
-    { id: "uninstallPurge", text: "Uninstall + delete data", states: ["stopped", "running"], group: "danger" }
+    { id: "install", text: "Install Project NOMAD", states: ["not-installed"] },
+    { id: "retry", text: "Retry status check", states: ["unknown"] },
+    { id: "open", text: "Open Command Center", states: ["running"] }
   ]
 
   function actionVisible(def) {
     return def.states.indexOf(root.nomadState) !== -1;
-  }
-
-  function actionsIn(group) {
-    return root.actionDefs.filter(function(def) {
-      return def.group === group && root.actionVisible(def);
-    });
   }
 
   function statusWord(status) {
@@ -154,11 +143,6 @@ Panel {
     if (id === "install") root.runInTerminal("install.sh", "");
     else if (id === "retry") root.refresh();
     else if (id === "open") Qt.openUrlExternally("http://localhost:8080");
-    else if (id === "start") root.runPrivileged("start.sh");
-    else if (id === "stop") root.runPrivileged("stop.sh");
-    else if (id === "update") root.runInTerminal("update.sh", "");
-    else if (id === "uninstall") uninstallDialog.opened = true;
-    else if (id === "uninstallPurge") purgeDialog.opened = true;
   }
 
   implicitWidth: button.implicitWidth
@@ -275,8 +259,9 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       onCloseRequested: {
-        if (purgeDialog.opened) purgeDialog.canceled();
-        else if (uninstallDialog.opened) uninstallDialog.canceled();
+        if (purgeConfirmDialog.opened) purgeConfirmDialog.canceled();
+        else if (uninstallConfirmDialog.opened) uninstallConfirmDialog.canceled();
+        else if (chooserDialog.opened) chooserDialog.canceled();
         else root.close();
       }
       onTabRequested: function(direction) { root.switchPanel(direction); }
@@ -317,6 +302,43 @@ Panel {
                 mipmap: true
             }
           }
+            trailingControl: Component {
+              Row {
+                spacing: Style.space(6)
+
+                PanelActionButton {
+                  iconText: "\uF011"
+                  tooltipText: root.nomadState === "running" ? "Stop" : "Start"
+                  foreground: root.foreground
+                  hoverColor: root.foreground
+                  fontFamily: root.fontFamily
+                  enabled: (root.nomadState === "running" || root.nomadState === "stopped") && !root.actionRunning
+                  onClicked: root.nomadState === "running"
+                    ? root.runPrivileged("stop.sh")
+                    : root.runPrivileged("start.sh")
+                }
+
+                PanelActionButton {
+                  iconText: "\uF021"
+                  tooltipText: "Stack update"
+                  foreground: root.foreground
+                  hoverColor: root.foreground
+                  fontFamily: root.fontFamily
+                  enabled: (root.nomadState === "running" || root.nomadState === "stopped") && !root.actionRunning
+                  onClicked: root.runInTerminal("update.sh", "");
+                }
+
+                PanelActionButton {
+                  iconText: "\uF1F8"
+                  tooltipText: "Uninstall"
+                  foreground: root.foreground
+                  hoverColor: root.urgent
+                  fontFamily: root.fontFamily
+                  enabled: root.nomadState === "running" || root.nomadState === "stopped"
+                  onClicked: chooserDialog.opened = true;
+                }
+              }
+            }
           }
 
           Item {
@@ -494,14 +516,8 @@ Panel {
             wrapMode: Text.WordWrap
           }
 
-          Rectangle {
-            width: parent.width
-            height: 1
-            color: Util.alpha(root.foreground, 0.14)
-          }
-
           Repeater {
-            model: root.actionsIn("primary")
+            model: root.actionDefs.filter(function(def) { return root.actionVisible(def); })
             delegate: Button {
               required property var modelData
               width: parent.width
@@ -512,65 +528,44 @@ Panel {
               onClicked: root.performAction(modelData.id)
             }
           }
-
-          Row {
-            width: parent.width
-            spacing: Style.space(8)
-
-            Repeater {
-              model: root.actionsIn("controls")
-              delegate: Button {
-                required property var modelData
-                width: (parent.width - Style.space(8)) / 2
-                text: modelData.text
-                foreground: root.foreground
-                enabled: !modelData.needsIdle || !root.actionRunning
-                fontFamily: root.fontFamily
-                onClicked: root.performAction(modelData.id)
-              }
-            }
           }
+      }
 
-          Row {
-            width: parent.width
-            spacing: Style.space(8)
-
-            Repeater {
-              model: root.actionsIn("danger")
-              delegate: Button {
-                required property var modelData
-                width: (parent.width - Style.space(8)) / 2
-                text: modelData.text
-                foreground: root.urgent
-                fontFamily: root.fontFamily
-                onClicked: root.performAction(modelData.id)
-              }
-            }
-          }
-
+      ChoiceDialog {
+        id: chooserDialog
+        anchors.fill: parent
+        message: "Uninstall Project NOMAD?"
+        choiceText: "Just uninstall"
+        destructiveText: "Delete data too"
+        selectedIndex: 1
+        onCanceled: chooserDialog.opened = false
+        onChosen: function(scope) {
+          chooserDialog.opened = false;
+          if (scope === "purge") purgeConfirmDialog.opened = true;
+          else uninstallConfirmDialog.opened = true;
         }
       }
 
       ConfirmDialog {
-        id: uninstallDialog
+        id: uninstallConfirmDialog
         anchors.fill: parent
         message: "Uninstall Project NOMAD? Containers and helpers are removed; storage, databases, and volumes are kept."
         confirmText: "Uninstall"
-        onCanceled: uninstallDialog.opened = false
+        onCanceled: uninstallConfirmDialog.opened = false
         onConfirmed: {
-          uninstallDialog.opened = false;
+          uninstallConfirmDialog.opened = false;
           root.runInTerminal("uninstall.sh", "");
         }
       }
 
       ConfirmDialog {
-        id: purgeDialog
+        id: purgeConfirmDialog
         anchors.fill: parent
         message: "Delete everything, including all NOMAD data in /opt/project-nomad? This cannot be undone."
         confirmText: "Delete all data"
-        onCanceled: purgeDialog.opened = false
+        onCanceled: purgeConfirmDialog.opened = false
         onConfirmed: {
-          purgeDialog.opened = false;
+          purgeConfirmDialog.opened = false;
           root.runInTerminal("uninstall.sh", "--purge-data");
         }
       }
