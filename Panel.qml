@@ -283,7 +283,7 @@ Panel {
           PanelHero {
             id: hero
             width: parent.width
-            title: "Project NOMAD"
+            title: "OmaNomad (Project NOMAD)"
             meta: root.stateText
             foreground: root.foreground
             fontFamily: root.fontFamily
