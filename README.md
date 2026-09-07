@@ -68,6 +68,10 @@ interactive prompts (confirmation, license) work.
 
 Arch port of upstream `install/install_nomad.sh` (Debian-only upstream):
 
+- Upstream assets (`management_compose.yaml`, the start/stop/update helper
+  scripts) are pinned to the upstream `v1.34.1` release commit and verified
+  against sha256 checksums committed here; a tampered or changed download
+  aborts the install
 - pacman packages instead of apt: `curl`, `gnupg`, `pciutils`, `jq`,
   `docker`, `docker-compose`, `nvidia-container-toolkit`
 - Docker from the Arch repos (`systemctl enable --now`); the
