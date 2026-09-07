@@ -201,6 +201,9 @@ Panel {
     interval: root.opened ? root.pollIntervalMs : 120000
     running: true
     repeat: true
+    // First tick at startup, not 2 min in: the bar icon is state-colored
+    // and would otherwise sit dim (unknown) after every shell restart.
+    triggeredOnStart: true
     onTriggered: root.refresh()
   }
 
