@@ -32,10 +32,19 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/preflight.sh"
 #                                                                                                                                                                                                 #
 ###################################################################################################################################################################################################
 
-MANAGEMENT_COMPOSE_FILE_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/management_compose.yaml"
-START_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/start_nomad.sh"
-STOP_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/stop_nomad.sh"
-UPDATE_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/refs/heads/main/install/update_nomad.sh"
+# Upstream assets are pinned to the upstream v1.34.1 release commit and
+# verified against the checksums below before use: a mutable-branch fetch
+# or a tampered/failed download aborts the install instead of running.
+UPSTREAM_COMMIT="f8e40fbd01f4ce0e6bc4cc3e37167b4bf4065028"
+MANAGEMENT_COMPOSE_FILE_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/${UPSTREAM_COMMIT}/install/management_compose.yaml"
+START_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/${UPSTREAM_COMMIT}/install/start_nomad.sh"
+STOP_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/${UPSTREAM_COMMIT}/install/stop_nomad.sh"
+UPDATE_SCRIPT_URL="https://raw.githubusercontent.com/Crosstalk-Solutions/project-nomad/${UPSTREAM_COMMIT}/install/update_nomad.sh"
+
+MANAGEMENT_COMPOSE_FILE_SHA256="ca6200454d1302ef674699f7a32febce080e620c7063cbcce89916f85a692058"
+START_SCRIPT_SHA256="1d27546a0e580021699ea6a4a60f5203361e4915089e0a2dd4996b2aaffc0825"
+STOP_SCRIPT_SHA256="637be60d16a255e96cc9c9765ccebccab5d772a1324d983d46fb47690dc2fcd0"
+UPDATE_SCRIPT_SHA256="b6887d065f247f9e4be12f7670efae5d0e793e7ce0ad9683bf10dce9651a5a8e"
 
 ###################################################################################################################################################################################################
 #                                                                                                                                                                                                 #
@@ -125,6 +134,21 @@ generateRandomPass() {
   password=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c "$length")
 
   echo "$password"
+}
+
+
+fetch_verified() {
+  # fetch_verified <url> <expected sha256> <destination>
+  # Downloads with retries, then verifies the content against the pinned
+  # checksum; any mismatch deletes the file and fails so the caller aborts.
+  local url="$1" expected="$2" dest="$3"
+  if ! curl -fsSL --retry 5 --retry-delay 3 "$url" -o "$dest"; then
+    return 1
+  fi
+  if ! echo "${expected}  ${dest}" | sha256sum --check --status; then
+    rm -f "$dest"
+    return 1
+  fi
 }
 
 ensure_docker_installed() {
@@ -337,8 +361,8 @@ download_management_compose_file() {
   local compose_file_path="${NOMAD_DIR}/compose.yml"
 
   echo -e "${YELLOW}#${RESET} Downloading docker-compose file for management...\\n"
-  if ! curl -fsSL "$MANAGEMENT_COMPOSE_FILE_URL" -o "$compose_file_path"; then
-    echo -e "${RED}#${RESET} Failed to download the docker compose file. Please check the URL and try again."
+  if ! fetch_verified "$MANAGEMENT_COMPOSE_FILE_URL" "$MANAGEMENT_COMPOSE_FILE_SHA256" "$compose_file_path"; then
+    echo -e "${RED}#${RESET} Failed to download the docker compose file or it failed its checksum verification. Please try again."
     exit 1
   fi
   echo -e "${GREEN}#${RESET} Docker compose file downloaded successfully to $compose_file_path.\\n"
@@ -366,6 +390,10 @@ download_management_compose_file() {
   sed -i "s|MYSQL_ROOT_PASSWORD=replaceme|MYSQL_ROOT_PASSWORD=${db_root_password}|g" "$compose_file_path"
   sed -i "s|MYSQL_PASSWORD=replaceme|MYSQL_PASSWORD=${db_user_password}|g" "$compose_file_path"
 
+  # The compose file holds APP_KEY and the DB passwords once configured:
+  # make it root-only so other local users cannot read the secrets.
+  chmod 600 "$compose_file_path"
+
   echo -e "${GREEN}#${RESET} Docker compose file configured successfully.\\n"
 }
 
@@ -375,20 +403,20 @@ download_helper_scripts() {
   local update_script_path="${NOMAD_DIR}/update_nomad.sh"
 
   echo -e "${YELLOW}#${RESET} Downloading helper scripts...\\n"
-  if ! curl -fsSL --retry 5 --retry-delay 3 "$START_SCRIPT_URL" -o "$start_script_path"; then
-    echo -e "${RED}#${RESET} Failed to download the start script. Please check the URL and try again."
+  if ! fetch_verified "$START_SCRIPT_URL" "$START_SCRIPT_SHA256" "$start_script_path"; then
+    echo -e "${RED}#${RESET} Failed to download the start script or it failed its checksum verification. Please try again."
     exit 1
   fi
   chmod +x "$start_script_path"
 
-  if ! curl -fsSL --retry 5 --retry-delay 3 "$STOP_SCRIPT_URL" -o "$stop_script_path"; then
-    echo -e "${RED}#${RESET} Failed to download the stop script. Please check the URL and try again."
+  if ! fetch_verified "$STOP_SCRIPT_URL" "$STOP_SCRIPT_SHA256" "$stop_script_path"; then
+    echo -e "${RED}#${RESET} Failed to download the stop script or it failed its checksum verification. Please try again."
     exit 1
   fi
   chmod +x "$stop_script_path"
 
-  if ! curl -fsSL --retry 5 --retry-delay 3 "$UPDATE_SCRIPT_URL" -o "$update_script_path"; then
-    echo -e "${RED}#${RESET} Failed to download the update script. Please check the URL and try again."
+  if ! fetch_verified "$UPDATE_SCRIPT_URL" "$UPDATE_SCRIPT_SHA256" "$update_script_path"; then
+    echo -e "${RED}#${RESET} Failed to download the update script or it failed its checksum verification. Please try again."
     exit 1
   fi
   chmod +x "$update_script_path"
