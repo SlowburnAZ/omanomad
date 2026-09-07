@@ -14,7 +14,6 @@ Panel {
   // Poll state: unknown until the first status.sh run completes.
   property string nomadState: "unknown"
   property string lastError: ""
-  property string notice: ""
   property bool actionRunning: false
   // Fast re-poll burst after a privileged action exits: the stack needs a
   // few seconds to move stopped <-> running.
@@ -99,7 +98,6 @@ Panel {
     if (actionProc.running) return;
     root.actionRunning = true;
     root.lastError = "";
-    root.notice = "";
     actionProc.command = ["pkexec", "bash", scriptPath(script)];
     actionProc.running = true;
   }
@@ -109,10 +107,9 @@ Panel {
     root.lastError = "";
     var cmd = "omarchy-launch-floating-terminal-with-presentation pkexec bash "
       + shellQuote(scriptPath(script)) + (args ? " " + args : "");
+    // Close first so the floating terminal that opens gets keyboard focus.
+    root.close();
     root.bar.run(cmd);
-    root.notice = "Continue in the floating terminal…";
-    // bar.run is fire-and-forget: re-poll on the next tick and on reopen.
-    Qt.callLater(root.refresh);
   }
 
   function errorTail(text) {
@@ -151,8 +148,6 @@ Panel {
   onOpenedChanged: if (opened) {
     refresh();
     Qt.callLater(function() { keyCatcher.forceActiveFocus(); });
-  } else {
-    root.notice = "";
   }
 
   Process {
@@ -488,17 +483,6 @@ Panel {
             visible: root.actionRunning || (root.nomadState === "unknown" && root.lastError === "")
             width: parent.width
             text: root.actionRunning ? "Working…" : "Checking…"
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
-            wrapMode: Text.WordWrap
-          }
-
-          Text {
-            textFormat: Text.PlainText
-            visible: root.notice !== ""
-            width: parent.width
-            text: root.notice
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
