@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "omanomad",
-  "name": "Project NOMAD",
+  "name": "OmaNomad",
   "version": "0.1.0",
   "author": "SlowburnAZ",
   "license": "MIT",
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "NOMAD",
-    "description": "Project NOMAD control panel",
+    "description": "OmaNomad control panel for Project NOMAD",
     "category": "Services",
     "allowMultiple": false,
     "defaultSection": "right",
