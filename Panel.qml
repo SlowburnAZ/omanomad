@@ -29,14 +29,11 @@ Panel {
   readonly property var installedComponents: components.filter(function(c) { return c.installed; })
   readonly property var availableComponents: components.filter(function(c) { return !c.installed; })
 
-  readonly property string glyph: ""
   readonly property color accent: Color.accent
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property color iconColor: nomadState === "running" ? foreground : dim
-  readonly property color barIconColor: nomadState === "running" ? barForeground : Qt.darker(barForeground, 1.55)
   readonly property string stateText: nomadState === "running" ? "Command Center running"
     : nomadState === "stopped" ? "Installed — stopped"
     : nomadState === "not-installed" ? "Not installed"
@@ -234,14 +231,14 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     iconComponent: Component {
-      Text {
-        textFormat: Text.PlainText
+      Image {
         anchors.centerIn: parent
-        text: root.glyph
-        color: root.barIconColor
-        opacity: root.nomadState === "running" ? 1.0 : 0.6
-        font.family: root.fontFamily
-        font.pixelSize: Style.space(12)
+        source: Qt.resolvedUrl("./assets/nomad-logo.webp")
+        height: Style.space(14)
+        width: height * 0.87
+        fillMode: Image.PreserveAspectFit
+        mipmap: true
+        opacity: root.nomadState === "running" ? 1.0 : 0.5
       }
     }
     onPressed: function(buttonCode) {
@@ -298,12 +295,12 @@ Panel {
             fontFamily: root.fontFamily
             iconOpacity: root.nomadState === "running" ? 1.0 : 0.5
             iconComponent: Component {
-              Text {
-                textFormat: Text.PlainText
-                text: root.glyph
-                color: root.iconColor
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.display
+              Image {
+                source: Qt.resolvedUrl("./assets/nomad-logo.webp")
+                height: Style.font.display
+                width: height * 0.87
+                fillMode: Image.PreserveAspectFit
+                mipmap: true
               }
             }
           }
