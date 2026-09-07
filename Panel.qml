@@ -318,17 +318,23 @@ Panel {
             }
 
             Text {
-              textFormat: Text.RichText
-              text: '<a href="http://localhost:8080">Command Center</a>'
+              textFormat: Text.PlainText
+              text: "Command Center"
               color: root.dim
-              linkColor: root.foreground
+              font.underline: true
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
               wrapMode: Text.NoWrap
               elide: Text.ElideRight
               width: parent.width - Style.space(16)
               anchors.verticalCenter: parent.verticalCenter
-              onLinkActivated: function(link) { Qt.openUrlExternally(link); }
+
+              MouseArea {
+                width: parent.implicitWidth
+                height: parent.implicitHeight
+                cursorShape: Qt.PointingHandCursor
+                onClicked: Qt.openUrlExternally("http://localhost:8080");
+              }
             }
           }
 
@@ -348,20 +354,25 @@ Panel {
               }
 
               Text {
-                textFormat: Text.RichText
-                text: modelData.link !== ""
-                  ? '<a href="' + modelData.link + '">' + modelData.name + '</a>'
-                    + (modelData.status === "running" ? "" : " — " + modelData.status)
-                  : modelData.name + " — " + modelData.status
+                textFormat: Text.PlainText
+                text: modelData.name
+                  + (modelData.status === "running" ? "" : " — " + modelData.status)
                 color: modelData.status === "running" ? root.dim : root.urgent
-                linkColor: root.foreground
+                font.underline: modelData.link !== ""
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.bodySmall
                 wrapMode: Text.NoWrap
                 elide: Text.ElideRight
                 width: parent.width - Style.space(16)
                 anchors.verticalCenter: parent.verticalCenter
-                onLinkActivated: function(link) { Qt.openUrlExternally(link); }
+
+                MouseArea {
+                  visible: modelData.link !== ""
+                  width: parent.implicitWidth
+                  height: parent.implicitHeight
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: Qt.openUrlExternally(modelData.link);
+                }
               }
             }
           }
