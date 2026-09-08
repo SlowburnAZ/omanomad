@@ -254,15 +254,30 @@ setup_nvidia_container_toolkit() {
 
       # Check if nvidia runtime already exists
       if ! grep -q '"nvidia"' "$daemon_json" 2>/dev/null; then
-        # Add nvidia runtime to existing config using jq if available
+        # Add nvidia runtime to existing config using jq if available.
+        # The merge is built in a securely created file inside the
+        # root-owned /etc/docker directory: mktemp creates it atomically
+        # (O_EXCL, mode 600), so there is no predictable path for a
+        # symlink attack, and the original ownership/mode are preserved
+        # across the atomic rename onto daemon.json.
         if command -v jq &> /dev/null; then
-          if sudo jq '. + {"runtimes": {"nvidia": {"path": "nvidia-container-runtime", "runtimeArgs": []}}}' "$daemon_json" 2>/dev/null | sudo tee /tmp/daemon.json.tmp > /dev/null && [[ -s /tmp/daemon.json.tmp ]]; then
-            if sudo mv /tmp/daemon.json.tmp "$daemon_json" 2>/dev/null; then
+          local merged_tmp
+          merged_tmp="$(sudo mktemp /etc/docker/daemon.json.XXXXXXXX 2>/dev/null)" || merged_tmp=""
+          if [[ -n "$merged_tmp" && -f "$merged_tmp" && ! -L "$merged_tmp" ]]; then
+            local orig_mode orig_uid orig_gid
+            orig_mode="$(sudo stat -c '%a' "$daemon_json" 2>/dev/null)" || orig_mode="644"
+            orig_uid="$(sudo stat -c '%u' "$daemon_json" 2>/dev/null)" || orig_uid="0"
+            orig_gid="$(sudo stat -c '%g' "$daemon_json" 2>/dev/null)" || orig_gid="0"
+            if sudo jq '. + {"runtimes": {"nvidia": {"path": "nvidia-container-runtime", "runtimeArgs": []}}}' "$daemon_json" 2>/dev/null | sudo tee "$merged_tmp" > /dev/null \
+              && [[ -s "$merged_tmp" ]] && [[ ! -L "$merged_tmp" ]] \
+              && sudo chown "${orig_uid}:${orig_gid}" "$merged_tmp" \
+              && sudo chmod "$orig_mode" "$merged_tmp" \
+              && sudo mv -f "$merged_tmp" "$daemon_json" 2>/dev/null; then
               config_success=true
             fi
+            # Clean up the temp file (no-op if the atomic move succeeded).
+            sudo rm -f "$merged_tmp" 2>/dev/null || true
           fi
-          # Clean up temp file if move failed
-          sudo rm -f /tmp/daemon.json.tmp 2>/dev/null || true
         else
           echo -e "${YELLOW}#${RESET} jq not available, skipping manual daemon.json configuration...\\n"
         fi
