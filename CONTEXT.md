@@ -27,3 +27,12 @@ _Avoid_: full uninstall, wipe, clean uninstall
 **Not-installed / stopped / running**:
 The three states from `bin/status.sh`: compose file absent, compose present but health check failing, health check passing. The panel shows `unknown` (Checking…) plus the reason when the check itself fails (exit 2, e.g. a VPN breaking localhost).
 _Avoid_: installed (ambiguous — means compose present, i.e. stopped or running)
+
+**Privileged helper**:
+Root-owned copies of the lifecycle scripts at
+`/usr/local/share/omanomad` plus sha256 pins at `/etc/omanomad`, installed
+once via `bin/lib/provision.sh` (trust-on-first-use). Every privileged
+panel action runs `pkexec /usr/local/share/omanomad/run.sh <script>`
+(`bin/lib/run.sh`), which allowlist-verifies the checksum before exec.
+Root never opens the user-writable checkout.
+_Avoid_: pkexec script (sounds like the checkout path is executed)

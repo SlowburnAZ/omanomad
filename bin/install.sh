@@ -354,16 +354,21 @@ accept_terms() {
 }
 
 create_nomad_directory(){
-  # Ensure the main installation directory exists
+  # Ensure the main installation directory exists. It stays root-owned:
+  # root's `docker compose -f` reads compose.yml from here, so a
+  # user-writable directory would let a compromised session swap the stack
+  # definition underneath root (same class as the sealed-helper fix).
+  # Existing installs chowned it to the user; reclaim it (top level only —
+  # never recursive, container data underneath keeps its owners).
   if [[ ! -d "$NOMAD_DIR" ]]; then
     echo -e "${YELLOW}#${RESET} Creating directory for Project NOMAD at $NOMAD_DIR...\\n"
     sudo mkdir -p "$NOMAD_DIR"
-    sudo chown "${SUDO_USER:-$(whoami)}:${SUDO_USER:-$(whoami)}" "$NOMAD_DIR"
-
     echo -e "${GREEN}#${RESET} Directory created successfully.\\n"
   else
     echo -e "${GREEN}#${RESET} Directory $NOMAD_DIR already exists.\\n"
   fi
+  sudo chown root:root "$NOMAD_DIR"
+  sudo chmod 755 "$NOMAD_DIR"
 
   # Also ensure the directory has a /storage/logs/ subdirectory
   sudo mkdir -p "${NOMAD_DIR}/storage/logs"

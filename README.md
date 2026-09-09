@@ -41,17 +41,39 @@ shows the VPN endpoint instead of the LAN address while connected.
 |--------------------------|--------------------------------------------------------------|
 | Status polling           | `bin/status.sh` (unprivileged; every `refreshIntervalSec` in panel, every 2 min for the bar icon; refused/reset health (curl 7/52/56) counts as stopped, other curl failures exit 2 + reason) |
 | Retry status check       | re-runs `bin/status.sh` immediately (unknown state)          |
-| Install                  | floating terminal: `pkexec bash bin/install.sh`              |
-| Start / Stop (icon)      | `pkexec bash bin/start.sh` / `bin/stop.sh`; start also restarts installed components once the Command Center is healthy |
-| Stack update (icon)      | floating terminal: `pkexec bash bin/update.sh` (confirm)     |
+| Install                  | floating terminal: sealed helper runs `install.sh`           |
+| Start / Stop (icon)      | sealed helper runs `start.sh` / `stop.sh`; start also restarts installed components once the Command Center is healthy |
+| Stack update (icon)      | floating terminal: sealed helper runs `update.sh` (confirm)  |
 | Uninstall (icon)         | opens the chooser — Just uninstall or Delete data too; each choice gets a confirmation dialog |
-| — Just uninstall         | floating terminal: `pkexec bash bin/uninstall.sh` (confirm)  |
-| — Delete data too        | floating terminal: `pkexec bash bin/uninstall.sh --purge-data` (confirm) |
+| — Just uninstall         | floating terminal: sealed helper runs `uninstall.sh` (confirm) |
+| — Delete data too        | floating terminal: sealed helper runs `uninstall.sh --purge-data` (confirm) |
 | Open Command Center      | browser at `http://localhost:8080`                           |
 
-`pkexec` (not `sudo`) is used because the panel has no terminal for a
-password prompt. Install/update/uninstall run in a floating terminal so their
-interactive prompts (confirmation, license) work.
+## Privileged helper
+
+Install, stack update, uninstall, start, and stop run as root — but never
+from the plugin checkout itself. On first use the panel asks to install a
+privileged helper: the lifecycle scripts are copied into root-owned
+`/usr/local/share/omanomad`, with sha256 pins recorded in root-owned
+`/etc/omanomad`. Every privileged action then runs
+`pkexec /usr/local/share/omanomad/run.sh <script>`, and that bootstrap
+executes only a script whose checksum matches its pin — unknown names,
+tampered copies, links, and unexpected arguments abort instead of running.
+A compromised user session therefore cannot redirect root execution by
+editing the checkout between your confirmation and root's open.
+
+Trust-on-first-use: the one-time helper install copies the checkout, so do
+it only from a plugin copy you trust. If the checkout later changes (e.g.
+a plugin update), the panel offers to refresh the helper; until then root
+keeps running the previously pinned copies. `pkexec` (not `sudo`) is used
+because the panel has no terminal for a password prompt.
+Install/update/uninstall run in a floating terminal so their interactive
+prompts (confirmation, license) work.
+`/opt/project-nomad` stays root-owned for the same reason: root's
+`docker compose -f` must not read a user-swappable stack definition.
+
+To remove the helper (e.g. before removing the plugin):
+`sudo rm -rf /usr/local/share/omanomad /etc/omanomad`.
 
 ## Uninstall and `--purge-data`
 
