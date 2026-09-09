@@ -25,6 +25,15 @@ Panel {
   // Not-installed catalog entries stay collapsed behind a disclosure row
   // so the panel shows state, not a 13-row wall of dim text.
   property bool showAvailable: false
+  // Privileged helper: sealed root-owned copies + pins (see bin/lib/run.sh).
+  // "unknown" until helper-check.sh reports; "missing"/"stale" route the
+  // next privileged action through the provision dialog, "ok" runs it.
+  property string helperState: "unknown"
+  property string helperSource: ""
+  property string pendingScript: ""
+  property string pendingArgs: ""
+  property bool pendingTerminal: false
+  readonly property string helperRunPath: "/usr/local/share/omanomad/run.sh"
   readonly property var installedComponents: components.filter(function(c) { return c.installed; })
   readonly property var availableComponents: components.filter(function(c) { return !c.installed; })
   readonly property int pollIntervalMs: Math.max(5, root.setting("refreshIntervalSec", 30) || 30) * 1000
@@ -44,10 +53,6 @@ Panel {
   // hardcoded ~/.config path.
   function scriptPath(name) {
     return Qt.resolvedUrl("./bin/" + name).toString().replace(/^file:\/\//, "");
-  }
-
-  function shellQuote(s) {
-    return "'" + String(s).replace(/'/g, "'\\''") + "'";
   }
 
   function refresh() {
@@ -95,21 +100,83 @@ Panel {
   // One adapter per path = hypothetical seam; don't merge them.
 
   function runPrivileged(script) {
+    if (!root.ensureHelper(script, "", false)) return;
+    root.runPrivilegedNow(script);
+  }
+
+  function runPrivilegedNow(script) {
     if (actionProc.running) return;
     root.actionRunning = true;
     root.lastError = "";
-    actionProc.command = ["pkexec", "bash", scriptPath(script)];
+    actionProc.command = ["pkexec", root.helperRunPath, script];
     actionProc.running = true;
   }
 
   function runInTerminal(script, args) {
+    if (!root.ensureHelper(script, args, true)) return;
+    root.runInTerminalNow(script, args);
+  }
+
+  function runInTerminalNow(script, args) {
     if (!root.bar) return;
     root.lastError = "";
-    var cmd = "omarchy-launch-floating-terminal-with-presentation pkexec bash "
-      + shellQuote(scriptPath(script)) + (args ? " " + args : "");
+    // Fixed root-owned bootstrap path plus panel-constant script names and
+    // the single --purge-data flag; run.sh rejects anything else.
+    var cmd = "omarchy-launch-floating-terminal-with-presentation pkexec "
+      + root.helperRunPath + " " + script + (args ? " " + args : "");
     // Close first so the floating terminal that opens gets keyboard focus.
     root.close();
     root.bar.run(cmd);
+  }
+
+  // Gates a privileged action on the sealed helper: ready -> run now,
+  // otherwise stash the request, refresh the helper state, and continue in
+  // drainPending() once the check lands.
+  function ensureHelper(script, args, terminal) {
+    if (root.helperState === "ok") return true;
+    root.pendingScript = script;
+    root.pendingArgs = args;
+    root.pendingTerminal = terminal;
+    root.checkHelper();
+    return false;
+  }
+
+  function drainPending() {
+    if (root.pendingScript === "") return;
+    if (root.helperState !== "ok") {
+      provisionConfirmDialog.opened = true;
+      return;
+    }
+    var script = root.pendingScript, args = root.pendingArgs, terminal = root.pendingTerminal;
+    root.pendingScript = ""; root.pendingArgs = ""; root.pendingTerminal = false;
+    if (terminal) root.runInTerminalNow(script, args);
+    else root.runPrivilegedNow(script);
+  }
+
+  function checkHelper() {
+    if (!helperCheckProc.running) {
+      helperCheckProc.command = [scriptPath("helper-check.sh")];
+      helperCheckProc.running = true;
+    }
+  }
+
+  function parseHelperCheck(text) {
+    var state = "unknown", source = "";
+    var lines = String(text || "").split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].indexOf("state=") === 0) state = lines[i].slice(6);
+      else if (lines[i].indexOf("source=") === 0) source = lines[i].slice(7);
+    }
+    if (state !== "missing" && state !== "stale" && state !== "ok") state = "unknown";
+    root.helperState = state;
+    root.helperSource = source;
+  }
+
+  function provisionHelper() {
+    var prov = scriptPath("lib/provision.sh");
+    var binDir = prov.substring(0, prov.length - "/lib/provision.sh".length);
+    provisionProc.command = ["pkexec", "bash", prov, binDir, root.helperSource];
+    provisionProc.running = true;
   }
 
   function errorTail(text) {
@@ -147,6 +214,7 @@ Panel {
 
   onOpenedChanged: if (opened) {
     refresh();
+    root.checkHelper();
     Qt.callLater(function() { keyCatcher.forceActiveFocus(); });
   }
 
@@ -182,6 +250,33 @@ Panel {
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.parseComponents(text) }
     onExited: function(exitCode) {
       if (exitCode !== 0) root.components = [];
+    }
+  }
+
+  Process {
+    id: helperCheckProc
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.parseHelperCheck(text) }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        root.helperState = "unknown";
+        root.lastError = "Privileged-helper check failed.";
+        root.pendingScript = "";
+      } else root.drainPending();
+    }
+  }
+
+  Process {
+    id: provisionProc
+    stderr: StdioCollector { id: provisionStderr; waitForEnd: true }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        root.lastError = root.errorTail(provisionStderr.text) || "Privileged-helper setup failed.";
+        root.pendingScript = "";
+      } else {
+        root.helperState = "ok";
+        root.drainPending();
+      }
+      root.refresh();
     }
   }
 
@@ -254,7 +349,8 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       onCloseRequested: {
-        if (purgeConfirmDialog.opened) purgeConfirmDialog.canceled();
+        if (provisionConfirmDialog.opened) provisionConfirmDialog.canceled();
+        else if (purgeConfirmDialog.opened) purgeConfirmDialog.canceled();
         else if (uninstallConfirmDialog.opened) uninstallConfirmDialog.canceled();
         else if (chooserDialog.opened) chooserDialog.canceled();
         else root.close();
@@ -551,6 +647,23 @@ Panel {
         onConfirmed: {
           purgeConfirmDialog.opened = false;
           root.runInTerminal("uninstall.sh", "--purge-data");
+        }
+      }
+
+      ConfirmDialog {
+        id: provisionConfirmDialog
+        anchors.fill: parent
+        message: root.helperState === "stale"
+          ? "Refresh the privileged helper? The plugin checkout changed since the helper was sealed; this recopies the scripts into /usr/local/share/omanomad and re-pins them. Only proceed if you trust this copy of the plugin."
+          : "Install the privileged helper? Install, update, and uninstall run as root through scripts sealed in /usr/local/share/omanomad and verified on every run. This one-time setup copies them there from this checkout — only proceed if you trust this copy of the plugin."
+        confirmText: root.helperState === "stale" ? "Refresh helper" : "Install helper"
+        onCanceled: {
+          provisionConfirmDialog.opened = false;
+          root.pendingScript = ""; root.pendingArgs = ""; root.pendingTerminal = false;
+        }
+        onConfirmed: {
+          provisionConfirmDialog.opened = false;
+          root.provisionHelper();
         }
       }
     }
