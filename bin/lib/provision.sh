@@ -24,8 +24,10 @@ SRCBIN="${1:?usage: provision.sh <checkout-bin-dir> <source-id>}"
 SOURCE_ID="${2:?usage: provision.sh <checkout-bin-dir> <source-id>}"
 
 # The source id is only a drift-detection label (the pins below are the
-# security boundary), but keep it to sane characters regardless.
-[[ "$SOURCE_ID" =~ ^[A-Za-z0-9_./+:-]{1,128}$ ]] || { echo "provision.sh: bad source id" >&2; exit 1; }
+# security boundary), but keep it to sane characters regardless. No dots
+# or slashes: ids are `git:<sha>`, `tree:<hash>`, or simple labels, so
+# path-like values (`../../x`) are never legitimate — reject them.
+[[ "$SOURCE_ID" =~ ^[A-Za-z0-9_:+-]{1,128}$ ]] || { echo "provision.sh: bad source id" >&2; exit 1; }
 [[ -d "$SRCBIN" ]] || { echo "provision.sh: not a directory: ${SRCBIN}" >&2; exit 1; }
 
 # Lifecycle scripts executed as root, plus the library they source.
