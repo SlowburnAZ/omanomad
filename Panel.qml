@@ -47,12 +47,19 @@ Panel {
   // fixed argv; the sealer is fetched from the immutable commit sha on
   // GitHub, checksum-verified against sealerSha256, and executed from a
   // root-owned temp file — no checkout pathname is ever executed as root.
-  // argv: $1 = bin dir, $2 = commit sha, $3 = expected sha256 of
-  // bin/lib/seal.sh at that commit.
-  readonly property string sealCommand: 'u="https://raw.githubusercontent.com/SlowburnAZ/omanomad/$2/bin/lib/seal.sh"; t="$(mktemp)"; if curl -fsSL --retry 5 --retry-delay 3 "$u" -o "$t"; then if echo "$3  $t" | sha256sum -c --strict >/dev/null 2>&1; then bash "$t" "$1" "$2"; r=$?; else echo "seal.sh: downloaded sealer does not match pinned checksum" >&2; r=1; fi; else r=1; fi; rm -f "$t"; exit $r'
+  // After a successful seal, an optional "run <script> [args]"
+  // continuation chains the triggering action into the same elevated
+  // session (one password prompt instead of two): the continuation goes
+  // through the root-owned, pin-verified run.sh, so the allowlist gate
+  // is unchanged. argv: $1 = bin dir, $2 = commit sha, $3 = expected
+  // sha256 of bin/lib/seal.sh at that commit, then optionally
+  // "run" <script> [<arg>].
+  readonly property string sealCommand: 'u="https://raw.githubusercontent.com/SlowburnAZ/omanomad/$2/bin/lib/seal.sh"; t="$(mktemp)"; if curl -fsSL --retry 5 --retry-delay 3 "$u" -o "$t"; then if echo "$3  $t" | sha256sum -c --strict >/dev/null 2>&1; then if bash "$t" "$1" "$2"; then if [ "$4" = "run" ]; then shift 4; /usr/local/share/omanomad/run.sh "$@"; exit $?; else r=0; fi; else r=$?; fi; else echo "seal.sh: downloaded sealer does not match pinned checksum" >&2; r=1; fi; else r=1; fi; rm -f "$t"; exit $r'
   property string pendingScript: ""
   property string pendingArgs: ""
   property bool pendingTerminal: false
+  // True while a seal pkexec is also running the pending action itself.
+  property bool chainedSeal: false
   readonly property string helperRunPath: "/usr/local/share/omanomad/run.sh"
   readonly property var installedComponents: components.filter(function(c) { return c.installed; })
   readonly property var availableComponents: components.filter(function(c) { return !c.installed; })
@@ -193,7 +200,18 @@ Panel {
   function sealHelper() {
     var binDir = scriptPath("helper-check.sh");
     binDir = binDir.substring(0, binDir.length - "/helper-check.sh".length);
-    sealProc.command = ["pkexec", "bash", "-c", root.sealCommand, "omanomad-seal", binDir, root.helperReleaseSha, root.sealerSha256];
+    var argv = ["pkexec", "bash", "-c", root.sealCommand, "omanomad-seal", binDir, root.helperReleaseSha, root.sealerSha256];
+    // Non-interactive pending actions (Start/Stop) chain into the seal's
+    // elevated session — one password prompt instead of two. Terminal
+    // flows keep their own pkexec inside the floating terminal.
+    if (root.pendingScript !== "" && !root.pendingTerminal) {
+      root.chainedSeal = true;
+      argv.push("run", root.pendingScript);
+      if (root.pendingArgs !== "") argv.push(root.pendingArgs);
+    } else {
+      root.chainedSeal = false;
+    }
+    sealProc.command = argv;
     sealProc.running = true;
   }
 
@@ -290,6 +308,13 @@ Panel {
       if (exitCode !== 0) {
         root.lastError = root.errorTail(sealStderr.text) || "Privileged-helper setup failed.";
         root.pendingScript = "";
+        root.chainedSeal = false;
+      } else if (root.chainedSeal) {
+        // The pending action already ran inside the seal's session.
+        root.helperState = "ok";
+        root.pendingScript = ""; root.pendingArgs = ""; root.pendingTerminal = false;
+        root.chainedSeal = false;
+        root.burstLeft = 3;
       } else {
         root.helperState = "ok";
         root.drainPending();
