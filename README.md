@@ -55,14 +55,16 @@ Install, stack update, uninstall, start, and stop run as root — but never
 from the plugin checkout itself, and root never even *reads* a script out
 of the checkout. When the helper is missing or stale, the panel's pkexec
 entry runs a fixed, root-owned `bash -c` one-liner that downloads the
-sealer (`bin/lib/seal.sh`) from the plugin's **marketplace-validated
-release tag** on GitHub and executes the fetched bytes. The sealer then
-downloads every lifecycle script from that same release and requires them
-to match your checkout **byte-for-byte** before installing anything: the
+sealer (`bin/lib/seal.sh`) from the plugin's **marketplace-validated full
+commit sha** on GitHub and executes the fetched bytes only after their
+sha256 matches a checksum constant committed in the validated panel —
+a moved tag cannot substitute code. The sealer then downloads every
+lifecycle script from that same immutable commit and requires them to
+match your checkout **byte-for-byte** before installing anything: the
 root-owned copies in `/usr/local/share/omanomad` and the sha256 pins in
 root-owned `/etc/omanomad` always contain exactly the code the marketplace
-validated at that tag. A tampered checkout — before or after you confirm —
-makes root refuse instead of installing the tampered copy.
+validated at that commit. A tampered checkout — before or after you
+confirm — makes root refuse instead of installing the tampered copy.
 
 Every privileged action then runs `pkexec /usr/local/share/omanomad/run.sh
 <script>`, and that bootstrap executes only a script whose checksum
@@ -71,7 +73,8 @@ arguments abort instead of running. A compromised user session therefore
 cannot redirect root execution by editing the checkout between your
 confirmation and root's open, and there is no race window on the
 provisioning path either: the sealer and the sealed scripts are fetched
-over HTTPS from the release, not read from user-writable storage.
+over HTTPS from the validated commit, not read from user-writable
+storage.
 
 The stack's container images are likewise pinned by immutable digest in
 the compose file (see *Upstream divergences*), so an upstream tag change
