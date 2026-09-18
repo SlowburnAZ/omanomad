@@ -32,8 +32,10 @@ _Avoid_: installed (ambiguous — means compose present, i.e. stopped or running
 Root-owned copies of the lifecycle scripts at
 `/usr/local/share/omanomad` plus sha256 pins at `/etc/omanomad`, sealed
 by `bin/lib/seal.sh` — fetched by root from the marketplace-validated
-release tag (never executed or read from the checkout) and byte-compared
-against the checkout before install. Every privileged panel action runs
+full commit sha and the panel-committed sealer checksum (a tag is
+mutable; a commit sha is not; never executed or read from the checkout)
+and byte-compared against the checkout before install. Every privileged
+panel action runs
 `pkexec /usr/local/share/omanomad/run.sh <script>` (`bin/lib/run.sh`),
 which allowlist-verifies the checksum before exec. Root never opens the
 user-writable checkout.

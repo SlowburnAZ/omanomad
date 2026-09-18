@@ -29,15 +29,21 @@ Panel {
   // "unknown" until helper-check.sh reports; "missing"/"stale" route the
   // next privileged action through the seal dialog, "ok" runs it.
   property string helperState: "unknown"
-  // The marketplace-validated release this panel build seals from. Root
-  // fetches the sealer from this tag on the plugin's upstream repo, so the
-  // trust anchor is the validated commit, not the mutable checkout.
-  readonly property string helperReleaseRef: "v0.3.0"
+  // The full commit sha of the marketplace-validated snapshot this panel
+  // build seals from. A tag is mutable; a commit sha is not.
+  readonly property string helperReleaseSha: "6a20edb1e17bb6996ea406385c7fb70b767a37d5"
+  // sha256 of bin/lib/seal.sh at that commit; the pkexec entry verifies
+  // the download against this before executing. Both constants ship
+  // inside the validated commit, binding the fetched sealer to the
+  // validated snapshot.
+  readonly property string sealerSha256: "00c3978c3683a9bfb9b9fcb8dc572d53c8978f508087a21ce5e2bf8edd3a5e04"
   // Privileged sealing entry. pkexec runs the root-owned bash with a
-  // fixed argv; the sealer itself is fetched from the release ref on
-  // GitHub and executed from a root-owned temp file — no checkout pathname
-  // is ever executed as root. argv: $1 = bin dir, $2 = release ref.
-  readonly property string sealCommand: 'u="https://raw.githubusercontent.com/SlowburnAZ/omanomad/$2/bin/lib/seal.sh"; t="$(mktemp)"; curl -fsSL --retry 5 --retry-delay 3 "$u" -o "$t" && bash "$t" "$1" "$2"; r=$?; rm -f "$t"; exit $r'
+  // fixed argv; the sealer is fetched from the immutable commit sha on
+  // GitHub, checksum-verified against sealerSha256, and executed from a
+  // root-owned temp file — no checkout pathname is ever executed as root.
+  // argv: $1 = bin dir, $2 = commit sha, $3 = expected sha256 of
+  // bin/lib/seal.sh at that commit.
+  readonly property string sealCommand: 'u="https://raw.githubusercontent.com/SlowburnAZ/omanomad/$2/bin/lib/seal.sh"; t="$(mktemp)"; if curl -fsSL --retry 5 --retry-delay 3 "$u" -o "$t"; then if echo "$3  $t" | sha256sum -c --strict >/dev/null 2>&1; then bash "$t" "$1" "$2"; r=$?; else echo "seal.sh: downloaded sealer does not match pinned checksum" >&2; r=1; fi; else r=1; fi; rm -f "$t"; exit $r'
   property string pendingScript: ""
   property string pendingArgs: ""
   property bool pendingTerminal: false
@@ -181,7 +187,7 @@ Panel {
   function sealHelper() {
     var binDir = scriptPath("helper-check.sh");
     binDir = binDir.substring(0, binDir.length - "/helper-check.sh".length);
-    sealProc.command = ["pkexec", "bash", "-c", root.sealCommand, "omanomad-seal", binDir, root.helperReleaseRef];
+    sealProc.command = ["pkexec", "bash", "-c", root.sealCommand, "omanomad-seal", binDir, root.helperReleaseSha, root.sealerSha256];
     sealProc.running = true;
   }
 

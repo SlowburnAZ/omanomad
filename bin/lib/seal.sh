@@ -2,17 +2,19 @@
 # omanomad privileged-helper sealer.
 #
 # This file is NEVER executed from the plugin checkout. The panel's pkexec
-# entry fetches it from the marketplace-validated release on GitHub and
+# entry fetches it from a full commit sha on GitHub, verifies the download
+# against the sealer sha256 constant committed in the panel, and only then
 # runs the fetched bytes as root; this checkout copy exists so the release
 # is reviewable and so the marketplace scanner sees the real provisioning
 # logic.
 #
-# Usage (root): seal.sh <checkout-bin-dir> <release-ref>
+# Usage (root): seal.sh <checkout-bin-dir> <commit-sha>
 #
-# Trust anchor: the release ref (vX.Y.Z tag on SlowburnAZ/omanomad) names
-# the commit the marketplace validated. Every lifecycle script is fetched
-# from that ref over HTTPS and byte-compared against the local checkout;
-# only the fetched, verified bytes are copied into the root-owned store.
+# Trust anchor: the sha names the immutable, marketplace-validated commit
+# on SlowburnAZ/omanomad — a tag can be moved; a full commit sha cannot.
+# Every lifecycle script is fetched from that commit over HTTPS and
+# byte-compared against the local checkout; only the fetched, verified
+# bytes are copied into the root-owned store, and SOURCE records the sha.
 # A tampered checkout (before or after user consent) fails the comparison
 # and nothing is installed. Root never executes any checkout pathname.
 #
@@ -24,13 +26,13 @@ set -euo pipefail
 STORE="${OMANOMAD_STORE:-/usr/local/share/omanomad/bin}"
 ETCDIR="${OMANOMAD_ETCDIR:-/etc/omanomad}"
 UPSTREAM="${OMANOMAD_UPSTREAM_BASE:-https://raw.githubusercontent.com/SlowburnAZ/omanomad}"
-SRCBIN="${1:?usage: seal.sh <checkout-bin-dir> <release-ref>}"
-REF="${2:?usage: seal.sh <checkout-bin-dir> <release-ref>}"
+SRCBIN="${1:?usage: seal.sh <checkout-bin-dir> <commit-sha>}"
+REF="${2:?usage: seal.sh <checkout-bin-dir> <commit-sha>}"
 
-# The ref selects which upstream commit the marketplace validated. Only
-# release tags are legitimate; a local sha or path fragment cannot exist
-# upstream, so anything else fails the fetch below.
-[[ "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "seal.sh: bad release ref" >&2; exit 1; }
+# The sha selects the immutable, marketplace-validated commit. A tag
+# can be moved; a full commit sha cannot. Every fetch below uses the
+# sha, so all downloaded bytes are bound to that exact snapshot.
+[[ "$REF" =~ ^[0-9a-f]{40}$ ]] || { echo "seal.sh: bad commit sha" >&2; exit 1; }
 [[ -d "$SRCBIN" ]] || { echo "seal.sh: not a directory: ${SRCBIN}" >&2; exit 1; }
 [[ -d "${SRCBIN}/lib" ]] || { echo "seal.sh: missing lib directory" >&2; exit 1; }
 
