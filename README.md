@@ -52,25 +52,30 @@ shows the VPN endpoint instead of the LAN address while connected.
 ## Privileged helper
 
 Install, stack update, uninstall, start, and stop run as root — but never
-from the plugin checkout itself. On first use the panel asks to install a
-privileged helper: the lifecycle scripts are copied into root-owned
-`/usr/local/share/omanomad`, with sha256 pins recorded in root-owned
-`/etc/omanomad`. Every privileged action then runs
-`pkexec /usr/local/share/omanomad/run.sh <script>`, and that bootstrap
-executes only a script whose checksum matches its pin — unknown names,
-tampered copies, links, and unexpected arguments abort instead of running.
-A compromised user session therefore cannot redirect root execution by
-editing the checkout between your confirmation and root's open.
+from the plugin checkout itself, and root never even *reads* a script out
+of the checkout. When the helper is missing or stale, the panel's pkexec
+entry runs a fixed, root-owned `bash -c` one-liner that downloads the
+sealer (`bin/lib/seal.sh`) from the plugin's **marketplace-validated
+release tag** on GitHub and executes the fetched bytes. The sealer then
+downloads every lifecycle script from that same release and requires them
+to match your checkout **byte-for-byte** before installing anything: the
+root-owned copies in `/usr/local/share/omanomad` and the sha256 pins in
+root-owned `/etc/omanomad` always contain exactly the code the marketplace
+validated at that tag. A tampered checkout — before or after you confirm —
+makes root refuse instead of installing the tampered copy.
 
-Trust-on-first-use: the one-time helper install copies the checkout, so do
-it only from a plugin copy you trust. If the checkout later changes (e.g.
-a plugin update), the panel offers to refresh the helper; until then root
-keeps running the previously pinned copies. `pkexec` (not `sudo`) is used
-because the panel has no terminal for a password prompt.
-Install/update/uninstall run in a floating terminal so their interactive
-prompts (confirmation, license) work.
-`/opt/project-nomad` stays root-owned for the same reason: root's
-`docker compose -f` must not read a user-swappable stack definition.
+Every privileged action then runs `pkexec /usr/local/share/omanomad/run.sh
+<script>`, and that bootstrap executes only a script whose checksum
+matches its pin — unknown names, tampered copies, links, and unexpected
+arguments abort instead of running. A compromised user session therefore
+cannot redirect root execution by editing the checkout between your
+confirmation and root's open, and there is no race window on the
+provisioning path either: the sealer and the sealed scripts are fetched
+over HTTPS from the release, not read from user-writable storage.
+
+The stack's container images are likewise pinned by immutable digest in
+the compose file (see *Upstream divergences*), so an upstream tag change
+cannot swap the running images underneath an approved install.
 
 To remove the helper (e.g. before removing the plugin):
 `sudo rm -rf /usr/local/share/omanomad /etc/omanomad`.
@@ -94,6 +99,11 @@ Arch port of upstream `install/install_nomad.sh` (Debian-only upstream):
   scripts) are pinned to the upstream `v1.34.1` release commit and verified
   against sha256 checksums committed here; a tampered or changed download
   aborts the install
+- All six container images are re-written to immutable
+  `image@sha256:…` digest pins before use; a stack update refuses a
+  compose file with any mutable image reference. Bumping a digest is a
+  plugin release (fresh marketplace validation), never a runtime pull of
+  "whatever the tag holds now"
 - pacman packages instead of apt: `curl`, `gnupg`, `pciutils`, `jq`,
   `docker`, `docker-compose`, `nvidia-container-toolkit`
 - Docker from the Arch repos (`systemctl enable --now`); the

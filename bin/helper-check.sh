@@ -18,10 +18,17 @@ fi
 BINDIR="$(dirname "${BASH_SOURCE[0]}")"
 current=""
 if [[ -e "${BINDIR}/../.git" ]] && command -v git &> /dev/null; then
-  current="git:$(git -C "${BINDIR}/.." rev-parse HEAD 2>/dev/null)"
+  # The helper is sealed from a marketplace-validated release tag; the
+  # checkout is current when HEAD sits exactly on a release tag matching
+  # the recorded SOURCE. Dev commits or tag drift read as stale and route
+  # the next privileged action through the refresh dialog.
+  if ref="$(git -C "${BINDIR}/.." describe --tags --exact-match HEAD 2>/dev/null)" \
+    && [[ "$ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    current="$ref"
+  fi
 fi
-if [[ -z "$current" || "$current" == "git:" ]]; then
-  tree_hash="$(cd "$BINDIR" && sha256sum install.sh start.sh stop.sh uninstall.sh update.sh lib/preflight.sh lib/run.sh lib/provision.sh 2>/dev/null | sha256sum | cut -d' ' -f1)"
+if [[ -z "$current" ]]; then
+  tree_hash="$(cd "$BINDIR" && sha256sum install.sh start.sh stop.sh uninstall.sh update.sh lib/preflight.sh lib/run.sh lib/seal.sh 2>/dev/null | sha256sum | cut -d' ' -f1)"
   current="tree:${tree_hash}"
 fi
 

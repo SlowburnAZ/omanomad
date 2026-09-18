@@ -30,9 +30,13 @@ _Avoid_: installed (ambiguous — means compose present, i.e. stopped or running
 
 **Privileged helper**:
 Root-owned copies of the lifecycle scripts at
-`/usr/local/share/omanomad` plus sha256 pins at `/etc/omanomad`, installed
-once via `bin/lib/provision.sh` (trust-on-first-use). Every privileged
-panel action runs `pkexec /usr/local/share/omanomad/run.sh <script>`
-(`bin/lib/run.sh`), which allowlist-verifies the checksum before exec.
-Root never opens the user-writable checkout.
-_Avoid_: pkexec script (sounds like the checkout path is executed)
+`/usr/local/share/omanomad` plus sha256 pins at `/etc/omanomad`, sealed
+by `bin/lib/seal.sh` — fetched by root from the marketplace-validated
+release tag (never executed or read from the checkout) and byte-compared
+against the checkout before install. Every privileged panel action runs
+`pkexec /usr/local/share/omanomad/run.sh <script>` (`bin/lib/run.sh`),
+which allowlist-verifies the checksum before exec. Root never opens the
+user-writable checkout.
+_Avoid_: pkexec script (sounds like the checkout path is executed),
+provision (the old checkout-run provisioner is gone — say "seal" or
+"seal the helper")

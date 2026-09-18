@@ -46,6 +46,18 @@ START_SCRIPT_SHA256="1d27546a0e580021699ea6a4a60f5203361e4915089e0a2dd4996b2aaff
 STOP_SCRIPT_SHA256="637be60d16a255e96cc9c9765ccebccab5d772a1324d983d46fb47690dc2fcd0"
 UPDATE_SCRIPT_SHA256="b6887d065f247f9e4be12f7670efae5d0e793e7ce0ad9683bf10dce9651a5a8e"
 
+# Container images are pinned by immutable digest: an upstream tag change
+# cannot swap the executed images underneath an approved install. Bumping
+# a digest here is a plugin release (new marketplace validation), never a
+# runtime fetch of "whatever the tag holds now". Digests are the manifest
+# digests Docker verified for the currently deployed, tested images.
+ADMIN_IMAGE="ghcr.io/crosstalk-solutions/project-nomad@sha256:62b547248dc8b626e21e89d1b1a069cecded759b01a7f3eb046426181caa4c76"
+DOZZLE_IMAGE="amir20/dozzle@sha256:d383abf0fee72a8037d6ec6474424e56d752a52208e0ed70f4805e9d86a77830"
+MYSQL_IMAGE="mysql@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b"
+REDIS_IMAGE="redis@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf"
+UPDATER_IMAGE="ghcr.io/crosstalk-solutions/project-nomad-sidecar-updater@sha256:5e3f09b1b056a5c1e96ff2a47a25d9137c5975010691686728174e04545da6c7"
+DISK_COLLECTOR_IMAGE="ghcr.io/crosstalk-solutions/project-nomad-disk-collector@sha256:154a5549fb13b7b3858838fca7ed87d5385c1c7cf9d72d65e6dd59e76952fd8c"
+
 ###################################################################################################################################################################################################
 #                                                                                                                                                                                                 #
 #                                                                                           Functions                                                                                             #
@@ -377,6 +389,28 @@ create_nomad_directory(){
   sudo touch "${NOMAD_DIR}/storage/logs/admin.log"
 }
 
+# Rewrite upstream's mutable image tags to the digest pins. Runs on the
+# freshly downloaded, checksum-verified compose file before it is used;
+# any line that did not match a known tag aborts the install, so an
+# unexpected upstream change can never reach `docker compose up`.
+pin_image_digests() {
+  local compose_file="$1"
+  echo -e "${YELLOW}#${RESET} Pinning container images by digest...\\n"
+  sed -i \
+    -e "s|image: ghcr.io/crosstalk-solutions/project-nomad:latest|image: ${ADMIN_IMAGE}|" \
+    -e "s|image: amir20/dozzle:v10.0|image: ${DOZZLE_IMAGE}|" \
+    -e "s|image: mysql:8.0|image: ${MYSQL_IMAGE}|" \
+    -e "s|image: redis:7-alpine|image: ${REDIS_IMAGE}|" \
+    -e "s|image: ghcr.io/crosstalk-solutions/project-nomad-sidecar-updater:latest|image: ${UPDATER_IMAGE}|" \
+    -e "s|image: ghcr.io/crosstalk-solutions/project-nomad-disk-collector:latest|image: ${DISK_COLLECTOR_IMAGE}|" \
+    "$compose_file"
+  if grep -E '^[[:space:]]*image:' "$compose_file" | grep -v '@' | grep -q .; then
+    echo -e "${RED}#${RESET} Compose file contains an unexpected or mutable image reference. Aborting."
+    exit 1
+  fi
+  echo -e "${GREEN}#${RESET} All container images pinned by digest.\\n"
+}
+
 download_management_compose_file() {
   local compose_file_path="${NOMAD_DIR}/compose.yml"
 
@@ -386,6 +420,8 @@ download_management_compose_file() {
     exit 1
   fi
   echo -e "${GREEN}#${RESET} Docker compose file downloaded successfully to $compose_file_path.\\n"
+
+  pin_image_digests "$compose_file_path"
 
   local app_key db_root_password db_user_password
   app_key=$(generateRandomPass)

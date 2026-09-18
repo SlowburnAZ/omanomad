@@ -27,9 +27,17 @@ Panel {
   property bool showAvailable: false
   // Privileged helper: sealed root-owned copies + pins (see bin/lib/run.sh).
   // "unknown" until helper-check.sh reports; "missing"/"stale" route the
-  // next privileged action through the provision dialog, "ok" runs it.
+  // next privileged action through the seal dialog, "ok" runs it.
   property string helperState: "unknown"
-  property string helperSource: ""
+  // The marketplace-validated release this panel build seals from. Root
+  // fetches the sealer from this tag on the plugin's upstream repo, so the
+  // trust anchor is the validated commit, not the mutable checkout.
+  readonly property string helperReleaseRef: "v0.3.0"
+  // Privileged sealing entry. pkexec runs the root-owned bash with a
+  // fixed argv; the sealer itself is fetched from the release ref on
+  // GitHub and executed from a root-owned temp file — no checkout pathname
+  // is ever executed as root. argv: $1 = bin dir, $2 = release ref.
+  readonly property string sealCommand: 'u="https://raw.githubusercontent.com/SlowburnAZ/omanomad/$2/bin/lib/seal.sh"; t="$(mktemp)"; curl -fsSL --retry 5 --retry-delay 3 "$u" -o "$t" && bash "$t" "$1" "$2"; r=$?; rm -f "$t"; exit $r'
   property string pendingScript: ""
   property string pendingArgs: ""
   property bool pendingTerminal: false
@@ -144,7 +152,7 @@ Panel {
   function drainPending() {
     if (root.pendingScript === "") return;
     if (root.helperState !== "ok") {
-      provisionConfirmDialog.opened = true;
+      sealConfirmDialog.opened = true;
       return;
     }
     var script = root.pendingScript, args = root.pendingArgs, terminal = root.pendingTerminal;
@@ -161,22 +169,20 @@ Panel {
   }
 
   function parseHelperCheck(text) {
-    var state = "unknown", source = "";
+    var state = "unknown";
     var lines = String(text || "").split("\n");
     for (var i = 0; i < lines.length; i++) {
       if (lines[i].indexOf("state=") === 0) state = lines[i].slice(6);
-      else if (lines[i].indexOf("source=") === 0) source = lines[i].slice(7);
     }
     if (state !== "missing" && state !== "stale" && state !== "ok") state = "unknown";
     root.helperState = state;
-    root.helperSource = source;
   }
 
-  function provisionHelper() {
-    var prov = scriptPath("lib/provision.sh");
-    var binDir = prov.substring(0, prov.length - "/lib/provision.sh".length);
-    provisionProc.command = ["pkexec", "bash", prov, binDir, root.helperSource];
-    provisionProc.running = true;
+  function sealHelper() {
+    var binDir = scriptPath("helper-check.sh");
+    binDir = binDir.substring(0, binDir.length - "/helper-check.sh".length);
+    sealProc.command = ["pkexec", "bash", "-c", root.sealCommand, "omanomad-seal", binDir, root.helperReleaseRef];
+    sealProc.running = true;
   }
 
   function errorTail(text) {
@@ -266,11 +272,11 @@ Panel {
   }
 
   Process {
-    id: provisionProc
-    stderr: StdioCollector { id: provisionStderr; waitForEnd: true }
+    id: sealProc
+    stderr: StdioCollector { id: sealStderr; waitForEnd: true }
     onExited: function(exitCode) {
       if (exitCode !== 0) {
-        root.lastError = root.errorTail(provisionStderr.text) || "Privileged-helper setup failed.";
+        root.lastError = root.errorTail(sealStderr.text) || "Privileged-helper setup failed.";
         root.pendingScript = "";
       } else {
         root.helperState = "ok";
@@ -349,7 +355,7 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       onCloseRequested: {
-        if (provisionConfirmDialog.opened) provisionConfirmDialog.canceled();
+        if (sealConfirmDialog.opened) sealConfirmDialog.canceled();
         else if (purgeConfirmDialog.opened) purgeConfirmDialog.canceled();
         else if (uninstallConfirmDialog.opened) uninstallConfirmDialog.canceled();
         else if (chooserDialog.opened) chooserDialog.canceled();
@@ -651,19 +657,19 @@ Panel {
       }
 
       ConfirmDialog {
-        id: provisionConfirmDialog
+        id: sealConfirmDialog
         anchors.fill: parent
         message: root.helperState === "stale"
-          ? "Refresh the privileged helper? The plugin checkout changed since the helper was sealed; this recopies the scripts into /usr/local/share/omanomad and re-pins them. Only proceed if you trust this copy of the plugin."
-          : "Install the privileged helper? Install, update, and uninstall run as root through scripts sealed in /usr/local/share/omanomad and verified on every run. This one-time setup copies them there from this checkout — only proceed if you trust this copy of the plugin."
+          ? "Refresh the privileged helper? The helper will be re-sealed from the plugin's marketplace-validated release and verified byte-for-byte against this checkout before install. Only proceed if you trust this copy of the plugin."
+          : "Install the privileged helper? Install, update, and uninstall run as root through scripts sealed in /usr/local/share/omanomad and verified on every run. The sealer is fetched from the plugin's marketplace-validated release and the scripts are verified byte-for-byte against this checkout before anything is installed."
         confirmText: root.helperState === "stale" ? "Refresh helper" : "Install helper"
         onCanceled: {
-          provisionConfirmDialog.opened = false;
+          sealConfirmDialog.opened = false;
           root.pendingScript = ""; root.pendingArgs = ""; root.pendingTerminal = false;
         }
         onConfirmed: {
-          provisionConfirmDialog.opened = false;
-          root.provisionHelper();
+          sealConfirmDialog.opened = false;
+          root.sealHelper();
         }
       }
     }
