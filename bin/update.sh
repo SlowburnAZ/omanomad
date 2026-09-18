@@ -91,6 +91,14 @@ ensure_docker_compose_file_exists() {
     echo -e "${RED}#${RESET} compose.yml file not found. Please ensure it exists at ${NOMAD_DIR}/compose.yml."
     exit 1
   fi
+  # A stack update must never pull "whatever a tag holds now": every image
+  # line must carry the digest pinned by the validated plugin release. A
+  # mutable ref here means a hand-edited or pre-digest compose file —
+  # reinstall to re-pin instead.
+  if grep -E '^[[:space:]]*image:' "${NOMAD_DIR}/compose.yml" | grep -v '@' | grep -q .; then
+    echo -e "${RED}#${RESET} compose.yml contains mutable image references (no digest pin). Reinstall Project NOMAD to re-pin images by digest."
+    exit 1
+  fi
 }
 
 force_recreate() {
