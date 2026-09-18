@@ -25,6 +25,12 @@ Panel {
   // Not-installed catalog entries stay collapsed behind a disclosure row
   // so the panel shows state, not a 13-row wall of dim text.
   property bool showAvailable: false
+  // Any modal dialog is open: the panel card must then grow to fit the
+  // dialog's centered card, which can exceed the content column's height
+  // (ConfirmDialog cards size to their message and the shell clips at the
+  // panel card's border).
+  readonly property bool dialogOpen: chooserDialog.opened || uninstallConfirmDialog.opened
+    || purgeConfirmDialog.opened || sealConfirmDialog.opened
   // Privileged helper: sealed root-owned copies + pins (see bin/lib/run.sh).
   // "unknown" until helper-check.sh reports; "missing"/"stale" route the
   // next privileged action through the seal dialog, "ok" runs it.
@@ -355,7 +361,7 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(560))
+    contentHeight: panel.fittedContentHeight(dialogOpen ? Math.max(column.implicitHeight, Style.space(420)) : column.implicitHeight, Style.space(560))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -666,8 +672,8 @@ Panel {
         id: sealConfirmDialog
         anchors.fill: parent
         message: root.helperState === "stale"
-          ? "Refresh the privileged helper? The helper will be re-sealed from the plugin's marketplace-validated release and verified byte-for-byte against this checkout before install. Only proceed if you trust this copy of the plugin."
-          : "Install the privileged helper? Install, update, and uninstall run as root through scripts sealed in /usr/local/share/omanomad and verified on every run. The sealer is fetched from the plugin's marketplace-validated release and the scripts are verified byte-for-byte against this checkout before anything is installed."
+          ? "Refresh the privileged helper? It re-seals from the marketplace-validated commit and is verified against this checkout. Only proceed if you trust this copy of the plugin."
+          : "Install the privileged helper? Root scripts are sealed from the marketplace-validated commit and verified on every run."
         confirmText: root.helperState === "stale" ? "Refresh helper" : "Install helper"
         onCanceled: {
           sealConfirmDialog.opened = false;
