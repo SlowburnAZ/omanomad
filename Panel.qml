@@ -31,12 +31,12 @@ Panel {
   property string helperState: "unknown"
   // The full commit sha of the marketplace-validated snapshot this panel
   // build seals from. A tag is mutable; a commit sha is not.
-  readonly property string helperReleaseSha: "PENDING_RELEASE_SHA"
+  readonly property string helperReleaseSha: "6a20edb1e17bb6996ea406385c7fb70b767a37d5"
   // sha256 of bin/lib/seal.sh at that commit; the pkexec entry verifies
   // the download against this before executing. Both constants ship
   // inside the validated commit, binding the fetched sealer to the
   // validated snapshot.
-  readonly property string sealerSha256: "PENDING_SEALER_SHA256"
+  readonly property string sealerSha256: "00c3978c3683a9bfb9b9fcb8dc572d53c8978f508087a21ce5e2bf8edd3a5e04"
   // Privileged sealing entry. pkexec runs the root-owned bash with a
   // fixed argv; the sealer is fetched from the immutable commit sha on
   // GitHub, checksum-verified against sealerSha256, and executed from a
