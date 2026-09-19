@@ -5,12 +5,20 @@
 # regardless of what this reports, so a wrong answer here cannot weaken
 # root — at worst the user runs a stale helper until re-provisioning.
 # Test overrides (never set in production): OMANOMAD_RUN, OMANOMAD_PINS,
-# OMANOMAD_SOURCE. Harmless: root never consumes this script's output.
+# OMANOMAD_SOURCE, OMANOMAD_ENTRY. Harmless: root never consumes this
+# script's output.
 RUN="${OMANOMAD_RUN:-/usr/local/share/omanomad/run.sh}"
 PINS="${OMANOMAD_PINS:-/etc/omanomad/SHA256SUMS}"
 RECORDED="${OMANOMAD_SOURCE:-/etc/omanomad/SOURCE}"
+ENTRY="${OMANOMAD_ENTRY:-/usr/local/share/omanomad/entry}"
 
-if [[ ! -f "$RUN" || ! -f "$PINS" || ! -f "$RECORDED" ]]; then
+entry_present="absent"
+if [[ -f "$ENTRY" && ! -L "$ENTRY" ]]; then
+  entry_present="present"
+fi
+echo "entry=${entry_present}"
+
+if [[ ! -f "$RUN" || ! -f "$PINS" || ! -f "$RECORDED" || "$entry_present" == "absent" ]]; then
   echo "state=missing"
   exit 0
 fi

@@ -52,29 +52,52 @@ shows the VPN endpoint instead of the LAN address while connected.
 ## Privileged helper
 
 Install, stack update, uninstall, start, and stop run as root — but never
-from the plugin checkout itself, and root never even *reads* a script out
-of the checkout. When the helper is missing or stale, the panel's pkexec
-entry runs a fixed, root-owned `bash -c` one-liner that downloads the
-sealer (`bin/lib/seal.sh`) from the plugin's **marketplace-validated full
-commit sha** on GitHub and executes the fetched bytes only after their
-sha256 matches a checksum constant committed in the validated panel —
-a moved tag cannot substitute code. The sealer then downloads every
-lifecycle script from that same immutable commit and requires them to
+from the plugin checkout itself. Root work goes through a small **entry**
+program that lives outside the plugin tree and owns the entire privileged
+program plus its trust constants (the validated commit sha and the
+sealer's checksum). The panel only ever invokes the fixed root-owned path
+with small action tokens — no shell program, commit sha, or digest ever
+reaches root from the user-writable checkout, so a tampered checkout
+cannot change what root executes.
+
+### One-time entry install
+
+Before the first privileged action — and again after a plugin update that
+bumps the sealing commit — run this once from a terminal. It fetches the
+entry from the immutable, marketplace-validated commit and installs it
+root-owned at a fixed path:
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/SlowburnAZ/omanomad/PENDING_INSTALL_SHA/bin/entry.sh" | sudo bash -c 'install -d -m 755 /usr/local/share/omanomad && install -m 700 /dev/stdin /usr/local/share/omanomad/entry'
+```
+
+Take this command from this README **as published on GitHub** — not from
+any local copy, which is user-writable. The sha is the sealing commit of
+this release (a tag can be moved; a full commit sha cannot).
+
+When you then trigger a privileged action, pkexec asks once for
+confirmation and the root-owned entry takes over: it fetches the sealer
+(`bin/lib/seal.sh`) by its pinned commit sha, verifies it against its
+pinned sha256, and only then executes it. The sealer downloads every
+lifecycle script from the same immutable commit and requires them to
 match your checkout **byte-for-byte** before installing anything: the
 root-owned copies in `/usr/local/share/omanomad` and the sha256 pins in
 root-owned `/etc/omanomad` always contain exactly the code the marketplace
 validated at that commit. A tampered checkout — before or after you
-confirm — makes root refuse instead of installing the tampered copy.
+confirm — makes root refuse instead of installing the tampered copy; a
+stale entry (pinned to an older commit than your updated checkout) fails
+the comparison the same way until you re-run the install command.
 
-Every privileged action then runs `pkexec /usr/local/share/omanomad/run.sh
-<script>`, and that bootstrap executes only a script whose checksum
-matches its pin — unknown names, tampered copies, links, and unexpected
-arguments abort instead of running. A compromised user session therefore
-cannot redirect root execution by editing the checkout between your
-confirmation and root's open, and there is no race window on the
-provisioning path either: the sealer and the sealed scripts are fetched
-over HTTPS from the validated commit, not read from user-writable
-storage.
+Every privileged action then runs `pkexec /usr/local/share/omanomad/entry
+run <script>`, and the entry dispatches only allowlisted lifecycle names
+to the root-owned `bin/lib/run.sh` bootstrap, which executes only a
+script whose checksum matches its pin — unknown names, tampered copies,
+links, and unexpected arguments abort instead of running. A compromised
+user session therefore cannot redirect root execution by editing the
+checkout between your confirmation and root's open, and there is no race
+window on the provisioning path either: the sealer and the sealed scripts
+are fetched over HTTPS from the validated commit, not read from
+user-writable storage.
 
 The stack's container images are likewise pinned by immutable digest in
 the compose file (see *Upstream divergences*), so an upstream tag change

@@ -30,15 +30,17 @@ _Avoid_: installed (ambiguous — means compose present, i.e. stopped or running
 
 **Privileged helper**:
 Root-owned copies of the lifecycle scripts at
-`/usr/local/share/omanomad` plus sha256 pins at `/etc/omanomad`, sealed
-by `bin/lib/seal.sh` — fetched by root from the marketplace-validated
-full commit sha and the panel-committed sealer checksum (a tag is
-mutable; a commit sha is not; never executed or read from the checkout)
-and byte-compared against the checkout before install. Every privileged
-panel action runs
-`pkexec /usr/local/share/omanomad/run.sh <script>` (`bin/lib/run.sh`),
-which allowlist-verifies the checksum before exec. Root never opens the
-user-writable checkout.
+`/usr/local/share/omanomad` plus sha256 pins at `/etc/omanomad`, run
+through the root-owned **entry** (`/usr/local/share/omanomad/entry`,
+installed once by the user from the validated commit — it owns the trust
+constants; never executed from the checkout). The entry fetches
+`bin/lib/seal.sh` by its pinned sha, verifies the pinned sealer checksum,
+seals the store (byte-compared against the checkout before install), and
+dispatches lifecycle actions to the root-owned `bin/lib/run.sh`, which
+allowlist-verifies the checksum before exec. The panel only passes the
+entry's fixed path plus action tokens — no program, sha, or digest from
+the writable checkout ever reaches root. Root never opens the
+user-writable checkout except to read scripts for the byte comparison.
 _Avoid_: pkexec script (sounds like the checkout path is executed),
 provision (the old checkout-run provisioner is gone — say "seal" or
 "seal the helper")
