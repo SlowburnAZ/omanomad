@@ -68,7 +68,7 @@ entry from the immutable, marketplace-validated commit and installs it
 root-owned at a fixed path:
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/SlowburnAZ/omanomad/PENDING_INSTALL_SHA/bin/entry.sh" | sudo bash -c 'install -d -m 755 /usr/local/share/omanomad && install -m 700 /dev/stdin /usr/local/share/omanomad/entry'
+curl -fsSL "https://raw.githubusercontent.com/SlowburnAZ/omanomad/1c51bd5387f03111bb266751a2ac6c414bf1eb2a/bin/entry.sh" | sudo bash -c 'install -d -m 755 /usr/local/share/omanomad && install -m 700 /dev/stdin /usr/local/share/omanomad/entry'
 ```
 
 Take this command from this README **as published on GitHub** — not from
