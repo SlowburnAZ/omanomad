@@ -30,37 +30,25 @@ Panel {
   // (ConfirmDialog cards size to their message and the shell clips at the
   // panel card's border).
   readonly property bool dialogOpen: chooserDialog.opened || uninstallConfirmDialog.opened
-    || purgeConfirmDialog.opened || sealConfirmDialog.opened
+    || purgeConfirmDialog.opened || sealConfirmDialog.opened || entryInstallDialog.opened
   // Privileged helper: sealed root-owned copies + pins (see bin/lib/run.sh).
   // "unknown" until helper-check.sh reports; "missing"/"stale" route the
   // next privileged action through the seal dialog, "ok" runs it.
   property string helperState: "unknown"
-  // The full commit sha of the marketplace-validated snapshot this panel
-  // build seals from. A tag is mutable; a commit sha is not.
-  readonly property string helperReleaseSha: "6a20edb1e17bb6996ea406385c7fb70b767a37d5"
-  // sha256 of bin/lib/seal.sh at that commit; the pkexec entry verifies
-  // the download against this before executing. Both constants ship
-  // inside the validated commit, binding the fetched sealer to the
-  // validated snapshot.
-  readonly property string sealerSha256: "00c3978c3683a9bfb9b9fcb8dc572d53c8978f508087a21ce5e2bf8edd3a5e04"
-  // Privileged sealing entry. pkexec runs the root-owned bash with a
-  // fixed argv; the sealer is fetched from the immutable commit sha on
-  // GitHub, checksum-verified against sealerSha256, and executed from a
-  // root-owned temp file — no checkout pathname is ever executed as root.
-  // After a successful seal, an optional "run <script> [args]"
-  // continuation chains the triggering action into the same elevated
-  // session (one password prompt instead of two): the continuation goes
-  // through the root-owned, pin-verified run.sh, so the allowlist gate
-  // is unchanged. argv: $1 = bin dir, $2 = commit sha, $3 = expected
-  // sha256 of bin/lib/seal.sh at that commit, then optionally
-  // "run" <script> [<arg>].
-  readonly property string sealCommand: 'u="https://raw.githubusercontent.com/SlowburnAZ/omanomad/$2/bin/lib/seal.sh"; t="$(mktemp)"; if curl -fsSL --retry 5 --retry-delay 3 "$u" -o "$t"; then if echo "$3  $t" | sha256sum -c --strict >/dev/null 2>&1; then if bash "$t" "$1" "$2"; then if [ "$4" = "run" ]; then shift 4; /usr/local/share/omanomad/run.sh "$@"; exit $?; else r=0; fi; else r=$?; fi; else echo "seal.sh: downloaded sealer does not match pinned checksum" >&2; r=1; fi; else r=1; fi; rm -f "$t"; exit $r'
+  // True once helper-check.sh reports the root-owned entry is installed.
+  // Missing entry = one-time install needed (see entryInstallDialog).
+  property bool entryPresent: false
+  // Fixed root-owned entry point. It lives OUTSIDE the plugin tree (the
+  // user installs it once with the README command) and owns the entire
+  // privileged program plus its trust constants, so nothing executable,
+  // no commit sha, and no digest from this user-writable checkout ever
+  // crosses into root execution — only this path and small action tokens.
+  readonly property string entryPath: "/usr/local/share/omanomad/entry"
   property string pendingScript: ""
   property string pendingArgs: ""
   property bool pendingTerminal: false
   // True while a seal pkexec is also running the pending action itself.
   property bool chainedSeal: false
-  readonly property string helperRunPath: "/usr/local/share/omanomad/run.sh"
   readonly property var installedComponents: components.filter(function(c) { return c.installed; })
   readonly property var availableComponents: components.filter(function(c) { return !c.installed; })
   readonly property int pollIntervalMs: Math.max(5, root.setting("refreshIntervalSec", 30) || 30) * 1000
@@ -135,7 +123,7 @@ Panel {
     if (actionProc.running) return;
     root.actionRunning = true;
     root.lastError = "";
-    actionProc.command = ["pkexec", root.helperRunPath, script];
+    actionProc.command = ["pkexec", root.entryPath, "run", script];
     actionProc.running = true;
   }
 
@@ -147,10 +135,10 @@ Panel {
   function runInTerminalNow(script, args) {
     if (!root.bar) return;
     root.lastError = "";
-    // Fixed root-owned bootstrap path plus panel-constant script names and
-    // the single --purge-data flag; run.sh rejects anything else.
+    // Fixed root-owned entry plus panel-constant script names and the
+    // single --purge-data flag; the entry and run.sh reject anything else.
     var cmd = "omarchy-launch-floating-terminal-with-presentation pkexec "
-      + root.helperRunPath + " " + script + (args ? " " + args : "");
+      + root.entryPath + " run " + script + (args ? " " + args : "");
     // Close first so the floating terminal that opens gets keyboard focus.
     root.close();
     root.bar.run(cmd);
@@ -171,7 +159,8 @@ Panel {
   function drainPending() {
     if (root.pendingScript === "") return;
     if (root.helperState !== "ok") {
-      sealConfirmDialog.opened = true;
+      if (root.entryPresent) sealConfirmDialog.opened = true;
+      else entryInstallDialog.opened = true;
       return;
     }
     var script = root.pendingScript, args = root.pendingArgs, terminal = root.pendingTerminal;
@@ -192,6 +181,7 @@ Panel {
     var lines = String(text || "").split("\n");
     for (var i = 0; i < lines.length; i++) {
       if (lines[i].indexOf("state=") === 0) state = lines[i].slice(6);
+      else if (lines[i].indexOf("entry=") === 0) root.entryPresent = lines[i].slice(6) === "present";
     }
     if (state !== "missing" && state !== "stale" && state !== "ok") state = "unknown";
     root.helperState = state;
@@ -200,14 +190,13 @@ Panel {
   function sealHelper() {
     var binDir = scriptPath("helper-check.sh");
     binDir = binDir.substring(0, binDir.length - "/helper-check.sh".length);
-    var argv = ["pkexec", "bash", "-c", root.sealCommand, "omanomad-seal", binDir, root.helperReleaseSha, root.sealerSha256];
+    var argv = ["pkexec", root.entryPath, "seal", binDir];
     // Non-interactive pending actions (Start/Stop) chain into the seal's
     // elevated session — one password prompt instead of two. Terminal
     // flows keep their own pkexec inside the floating terminal.
     if (root.pendingScript !== "" && !root.pendingTerminal) {
       root.chainedSeal = true;
-      argv.push("run", root.pendingScript);
-      if (root.pendingArgs !== "") argv.push(root.pendingArgs);
+      argv.push("--then", root.pendingScript);
     } else {
       root.chainedSeal = false;
     }
@@ -690,6 +679,21 @@ Panel {
         onConfirmed: {
           purgeConfirmDialog.opened = false;
           root.runInTerminal("uninstall.sh", "--purge-data");
+        }
+      }
+
+      ConfirmDialog {
+        id: entryInstallDialog
+        anchors.fill: parent
+        message: "The privileged entry isn't installed. Run the one-time entry install command from the plugin's README on GitHub (Privileged helper section), then press Retry."
+        confirmText: "Retry"
+        onCanceled: {
+          entryInstallDialog.opened = false;
+          root.pendingScript = ""; root.pendingArgs = ""; root.pendingTerminal = false;
+        }
+        onConfirmed: {
+          entryInstallDialog.opened = false;
+          root.checkHelper();
         }
       }
 
