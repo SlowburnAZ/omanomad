@@ -64,16 +64,20 @@ cannot change what root executes.
 
 Before the first privileged action — and again after a plugin update that
 bumps the sealing commit — run this once from a terminal. It fetches the
-entry from the immutable, marketplace-validated commit and installs it
-root-owned at a fixed path:
+entry from the plugin's GitHub and installs it root-owned at a fixed path:
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/SlowburnAZ/omanomad/1c51bd5387f03111bb266751a2ac6c414bf1eb2a/bin/entry.sh" | sudo bash -c 'install -d -m 755 /usr/local/share/omanomad && install -m 700 /dev/stdin /usr/local/share/omanomad/entry'
+curl -fsSL "https://raw.githubusercontent.com/SlowburnAZ/omanomad/main/bin/entry.sh" -o /tmp/omanomad-entry
+echo "53acc7698a69205bb7048ed2e8c3f3d81f991b25f171b8bbdfaabb64672037c4  /tmp/omanomad-entry" | sha256sum -c --strict && sudo bash -c 'echo "53acc7698a69205bb7048ed2e8c3f3d81f991b25f171b8bbdfaabb64672037c4  /tmp/omanomad-entry" | sha256sum -c --strict && install -d -m 755 /usr/local/share/omanomad && install -m 700 /tmp/omanomad-entry /usr/local/share/omanomad/entry'
 ```
 
-Take this command from this README **as published on GitHub** — not from
-any local copy, which is user-writable. The sha is the sealing commit of
-this release (a tag can be moved; a full commit sha cannot).
+The fetch locator (`main`) is just transport: the sha256 on the line above
+pins the entry's exact bytes, and **root re-verifies it immediately before
+installing** — a moved branch or a tampered download cannot substitute a
+different entry. Take this command from this README **as published on
+GitHub** — not from any local copy, which is user-writable. After a
+release that changes the entry, the hash above is updated in the same
+release.
 
 When you then trigger a privileged action, pkexec asks once for
 confirmation and the root-owned entry takes over: it fetches the sealer
