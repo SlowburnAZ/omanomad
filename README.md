@@ -68,7 +68,7 @@ entry from the plugin's GitHub and installs it root-owned at a fixed path:
 
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/SlowburnAZ/omanomad/main/bin/entry.sh" -o /tmp/omanomad-entry
-echo "PENDING_ENTRY_SHA256  /tmp/omanomad-entry" | sha256sum -c --strict && sudo bash -c 'echo "PENDING_ENTRY_SHA256  /tmp/omanomad-entry" | sha256sum -c --strict && install -d -m 755 /usr/local/share/omanomad && install -m 700 /tmp/omanomad-entry /usr/local/share/omanomad/entry'
+echo "fd36f04a269b03ea09d1e01260d5eff8b5a8b345870db6f6c087b35f0f8d4354  /tmp/omanomad-entry" | sha256sum -c --strict && sudo bash -c 'echo "fd36f04a269b03ea09d1e01260d5eff8b5a8b345870db6f6c087b35f0f8d4354  /tmp/omanomad-entry" | sha256sum -c --strict && install -d -m 755 /usr/local/share/omanomad && install -m 700 /tmp/omanomad-entry /usr/local/share/omanomad/entry'
 ```
 
 The fetch locator (`main`) is just transport: the sha256 on the line above
