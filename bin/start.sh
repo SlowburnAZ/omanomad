@@ -32,8 +32,22 @@ for _ in $(seq 1 30); do
 done
 
 command -v jq &> /dev/null || exit 0
-services="$(curl -sf --max-time 3 http://localhost:8080/api/system/services 2> /dev/null \
-  | jq -r '.[] | select(.installed == 1 and .status != "running") | .service_name')" || exit 0
+# Cap the response before anything parses or captures it: head -c keeps at
+# most 64 KiB+1 bytes in memory (a malfunctioning or compromised Command
+# Center cannot exhaust host memory through this root-executed path), and a
+# capture longer than the cap is an oversized or truncated-at-cap response
+# — refused, never parsed. Truncated-but-small JSON is rejected by jq's
+# parse below. The component restart is best-effort garnish: a refusal is a
+# stderr note, never a failed start of the stack itself.
+raw="$(curl -sf --max-time 3 http://localhost:8080/api/system/services 2> /dev/null | head -c $((64 * 1024 + 1)))"
+if (( ${#raw} > 64 * 1024 )); then
+  echo "System-services response exceeds the 64 KiB cap; skipping component restart." >&2
+  exit 0
+fi
+services="$(printf '%s' "$raw" | jq -r '.[] | select(.installed == 1 and .status != "running") | .service_name')" || {
+  [[ -n "$raw" ]] && echo "System-services response was not valid JSON; skipping component restart." >&2
+  exit 0
+}
 for svc in $services; do
   echo "Starting component: ${svc}"
   curl -sf --max-time 5 -X POST -H "Content-Type: application/json" \
