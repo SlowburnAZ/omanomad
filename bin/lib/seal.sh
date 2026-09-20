@@ -46,7 +46,7 @@ install -d -m 700 "${STAGE}/bin/lib"
 # fail closed.
 PINNED="install.sh start.sh stop.sh uninstall.sh update.sh lib/preflight.sh lib/run.sh lib/seal.sh"
 for f in $PINNED; do
-  curl -fsSL --retry 5 --retry-delay 3 "${UPSTREAM}/${REF}/bin/${f}" -o "${STAGE}/bin/${f}"
+  curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 120 --max-filesize 1048576 "${UPSTREAM}/${REF}/bin/${f}" -o "${STAGE}/bin/${f}"
 done
 
 # The checkout must byte-match the validated release: a same-UID attacker

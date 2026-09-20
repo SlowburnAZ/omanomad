@@ -22,8 +22,8 @@
 # bin/ layout).
 set -euo pipefail
 
-SEALED_SHA="1c51bd5387f03111bb266751a2ac6c414bf1eb2a"
-SEALER_SHA256="00c3978c3683a9bfb9b9fcb8dc572d53c8978f508087a21ce5e2bf8edd3a5e04"
+SEALED_SHA="bf5874ddd6a8d70bb7dfd0495e917005f40a9ecd"
+SEALER_SHA256="ce89d692864da93de7867cf348f902b21bb31f8cf4625f8c771aab10ca0d5b51"
 
 STORE="${OMANOMAD_STORE:-/usr/local/share/omanomad/bin}"
 UPSTREAM="${OMANOMAD_UPSTREAM_BASE:-https://raw.githubusercontent.com/SlowburnAZ/omanomad}"
@@ -54,7 +54,7 @@ case "${1:-}" in
     t="$(mktemp)"
     cleanup() { rm -f "$t"; }
     trap cleanup EXIT
-    if ! curl -fsSL --retry 5 --retry-delay 3 "$u" -o "$t"; then
+    if ! curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 120 --max-filesize 1048576 "$u" -o "$t"; then
       echo "entry: sealer download failed" >&2
       exit 1
     fi

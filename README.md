@@ -68,7 +68,7 @@ entry from the plugin's GitHub and installs it root-owned at a fixed path:
 
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/SlowburnAZ/omanomad/main/bin/entry.sh" -o /tmp/omanomad-entry
-echo "53acc7698a69205bb7048ed2e8c3f3d81f991b25f171b8bbdfaabb64672037c4  /tmp/omanomad-entry" | sha256sum -c --strict && sudo bash -c 'echo "53acc7698a69205bb7048ed2e8c3f3d81f991b25f171b8bbdfaabb64672037c4  /tmp/omanomad-entry" | sha256sum -c --strict && install -d -m 755 /usr/local/share/omanomad && install -m 700 /tmp/omanomad-entry /usr/local/share/omanomad/entry'
+echo "fd36f04a269b03ea09d1e01260d5eff8b5a8b345870db6f6c087b35f0f8d4354  /tmp/omanomad-entry" | sha256sum -c --strict && sudo bash -c 'echo "fd36f04a269b03ea09d1e01260d5eff8b5a8b345870db6f6c087b35f0f8d4354  /tmp/omanomad-entry" | sha256sum -c --strict && install -d -m 755 /usr/local/share/omanomad && install -m 700 /tmp/omanomad-entry /usr/local/share/omanomad/entry'
 ```
 
 The fetch locator (`main`) is just transport: the sha256 on the line above
@@ -127,8 +127,10 @@ Arch port of upstream `install/install_nomad.sh` (Debian-only upstream):
 
 - Upstream assets (`management_compose.yaml`, the start/stop/update helper
   scripts) are pinned to the upstream `v1.34.1` release commit and verified
-  against sha256 checksums committed here; a tampered or changed download
-  aborts the install
+  against sha256 checksums committed here; each download is staged in a
+  root-private directory, checksum-checked there, and refused if a symlink
+  or non-regular file was planted at the destination before the verified
+  bytes are installed. A tampered or changed download aborts the install
 - All six container images are re-written to immutable
   `image@sha256:…` digest pins before use; a stack update refuses a
   compose file with any mutable image reference. Bumping a digest is a
