@@ -150,17 +150,37 @@ generateRandomPass() {
 
 
 fetch_verified() {
-  # fetch_verified <url> <expected sha256> <destination>
-  # Downloads with retries, then verifies the content against the pinned
-  # checksum; any mismatch deletes the file and fails so the caller aborts.
-  local url="$1" expected="$2" dest="$3"
-  if ! curl -fsSL --retry 5 --retry-delay 3 "$url" -o "$dest"; then
+  # fetch_verified <url> <expected sha256> <destination> <mode>
+  # Downloads with bounded time/size into a root-created private staging
+  # directory, verifies the pinned checksum THERE, then installs into the
+  # root-owned destination. A symlink or non-regular file planted at the
+  # destination (e.g. from an era when the directory was user-writable) is
+  # refused, never followed; the verified bytes are then placed as a fresh
+  # regular file. Any mismatch deletes the staging dir and fails so the
+  # caller aborts.
+  local url="$1" expected="$2" dest="$3" mode="$4"
+  local stage staged
+  stage="$(mktemp -d /tmp/omanomad-fetch.XXXXXXXX)"
+  chmod 700 "$stage"
+  staged="${stage}/payload"
+  if ! curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 120 --max-filesize 5242880 "$url" -o "$staged"; then
+    rm -rf "$stage"
     return 1
   fi
-  if ! echo "${expected}  ${dest}" | sha256sum --check --status; then
-    rm -f "$dest"
+  if ! echo "${expected}  ${staged}" | sha256sum --check --status; then
+    rm -rf "$stage"
     return 1
   fi
+  if [[ -L "$dest" || ( -e "$dest" && ! -f "$dest" ) ]]; then
+    echo "install.sh: refusing non-regular destination: ${dest}" >&2
+    rm -rf "$stage"
+    return 1
+  fi
+  rm -f "$dest"
+  install -m "${mode}" "$staged" "$dest"
+  local rc=$?
+  rm -rf "$stage"
+  return $rc
 }
 
 ensure_docker_installed() {
@@ -372,6 +392,13 @@ create_nomad_directory(){
   # definition underneath root (same class as the sealed-helper fix).
   # Existing installs chowned it to the user; reclaim it (top level only —
   # never recursive, container data underneath keeps its owners).
+  # An older, previously user-writable directory can contain attacker-
+  # planted symlinks; every download target below is verified for
+  # regularity and the directory itself is refused if it is a link.
+  if [[ -L "$NOMAD_DIR" ]]; then
+    echo -e "${RED}#${RESET} ${NOMAD_DIR} is a symlink. Aborting."
+    exit 1
+  fi
   if [[ ! -d "$NOMAD_DIR" ]]; then
     echo -e "${YELLOW}#${RESET} Creating directory for Project NOMAD at $NOMAD_DIR...\\n"
     sudo mkdir -p "$NOMAD_DIR"
@@ -383,6 +410,10 @@ create_nomad_directory(){
   sudo chmod 755 "$NOMAD_DIR"
 
   # Also ensure the directory has a /storage/logs/ subdirectory
+  if [[ -L "${NOMAD_DIR}/storage" ]]; then
+    echo -e "${RED}#${RESET} ${NOMAD_DIR}/storage is a symlink. Aborting."
+    exit 1
+  fi
   sudo mkdir -p "${NOMAD_DIR}/storage/logs"
 
   # Create a admin.log file in the logs directory
@@ -415,8 +446,8 @@ download_management_compose_file() {
   local compose_file_path="${NOMAD_DIR}/compose.yml"
 
   echo -e "${YELLOW}#${RESET} Downloading docker-compose file for management...\\n"
-  if ! fetch_verified "$MANAGEMENT_COMPOSE_FILE_URL" "$MANAGEMENT_COMPOSE_FILE_SHA256" "$compose_file_path"; then
-    echo -e "${RED}#${RESET} Failed to download the docker compose file or it failed its checksum verification. Please try again."
+  if ! fetch_verified "$MANAGEMENT_COMPOSE_FILE_URL" "$MANAGEMENT_COMPOSE_FILE_SHA256" "$compose_file_path" 600; then
+    echo -e "${RED}#${RESET} Failed to download the docker compose file or it failed verification. Please try again."
     exit 1
   fi
   echo -e "${GREEN}#${RESET} Docker compose file downloaded successfully to $compose_file_path.\\n"
@@ -459,23 +490,20 @@ download_helper_scripts() {
   local update_script_path="${NOMAD_DIR}/update_nomad.sh"
 
   echo -e "${YELLOW}#${RESET} Downloading helper scripts...\\n"
-  if ! fetch_verified "$START_SCRIPT_URL" "$START_SCRIPT_SHA256" "$start_script_path"; then
-    echo -e "${RED}#${RESET} Failed to download the start script or it failed its checksum verification. Please try again."
+  if ! fetch_verified "$START_SCRIPT_URL" "$START_SCRIPT_SHA256" "$start_script_path" 755; then
+    echo -e "${RED}#${RESET} Failed to download the start script or it failed verification. Please try again."
     exit 1
   fi
-  chmod +x "$start_script_path"
 
-  if ! fetch_verified "$STOP_SCRIPT_URL" "$STOP_SCRIPT_SHA256" "$stop_script_path"; then
-    echo -e "${RED}#${RESET} Failed to download the stop script or it failed its checksum verification. Please try again."
+  if ! fetch_verified "$STOP_SCRIPT_URL" "$STOP_SCRIPT_SHA256" "$stop_script_path" 755; then
+    echo -e "${RED}#${RESET} Failed to download the stop script or it failed verification. Please try again."
     exit 1
   fi
-  chmod +x "$stop_script_path"
 
-  if ! fetch_verified "$UPDATE_SCRIPT_URL" "$UPDATE_SCRIPT_SHA256" "$update_script_path"; then
-    echo -e "${RED}#${RESET} Failed to download the update script or it failed its checksum verification. Please try again."
+  if ! fetch_verified "$UPDATE_SCRIPT_URL" "$UPDATE_SCRIPT_SHA256" "$update_script_path" 755; then
+    echo -e "${RED}#${RESET} Failed to download the update script or it failed verification. Please try again."
     exit 1
   fi
-  chmod +x "$update_script_path"
 
   echo -e "${GREEN}#${RESET} Helper scripts downloaded successfully to $start_script_path, $stop_script_path, and $update_script_path.\\n"
 }
