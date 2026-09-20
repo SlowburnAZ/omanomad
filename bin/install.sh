@@ -409,15 +409,96 @@ create_nomad_directory(){
   sudo chown root:root "$NOMAD_DIR"
   sudo chmod 755 "$NOMAD_DIR"
 
-  # Also ensure the directory has a /storage/logs/ subdirectory
+  # Reclaim the storage subtree level by level. An older, previously
+  # user-writable install can carry attacker-planted symlinks (or other
+  # non-regular files) at storage, storage/logs, or any file within, and
+  # root's mkdir/touch/tee would follow them into arbitrary root-writable
+  # targets. Each level is therefore refused if it is a link or a non-
+  # directory, then reclaimed non-dereferencing (chown -h, so even a link
+  # that slipped through is chowned instead of followed) and made 755
+  # root-owned. Once a level is root-owned, a same-UID process can no
+  # longer create or swap anything beneath it, so the checks for deeper
+  # levels are race-free. Top-level NOMAD_DIR is already root-owned above,
+  # so storage itself cannot be swapped between check and reclaim.
   if [[ -L "${NOMAD_DIR}/storage" ]]; then
     echo -e "${RED}#${RESET} ${NOMAD_DIR}/storage is a symlink. Aborting."
     exit 1
   fi
-  sudo mkdir -p "${NOMAD_DIR}/storage/logs"
+  if [[ ! -d "${NOMAD_DIR}/storage" ]]; then
+    if [[ -e "${NOMAD_DIR}/storage" ]]; then
+      echo -e "${RED}#${RESET} ${NOMAD_DIR}/storage exists but is not a directory. Aborting."
+      exit 1
+    fi
+    sudo mkdir "${NOMAD_DIR}/storage"
+  fi
+  sudo chown -h root:root "${NOMAD_DIR}/storage"
+  sudo chmod 755 "${NOMAD_DIR}/storage"
 
-  # Create a admin.log file in the logs directory
-  sudo touch "${NOMAD_DIR}/storage/logs/admin.log"
+  if [[ -L "${NOMAD_DIR}/storage/logs" ]]; then
+    echo -e "${RED}#${RESET} ${NOMAD_DIR}/storage/logs is a symlink. Aborting."
+    exit 1
+  fi
+  if [[ ! -d "${NOMAD_DIR}/storage/logs" ]]; then
+    if [[ -e "${NOMAD_DIR}/storage/logs" ]]; then
+      echo -e "${RED}#${RESET} ${NOMAD_DIR}/storage/logs exists but is not a directory. Aborting."
+      exit 1
+    fi
+    sudo mkdir "${NOMAD_DIR}/storage/logs"
+  fi
+  sudo chown -h root:root "${NOMAD_DIR}/storage/logs"
+  sudo chmod 755 "${NOMAD_DIR}/storage/logs"
+
+  # admin.log: refuse a planted link or non-regular destination instead of
+  # following it with touch. An existing regular file is left untouched
+  # (touch only ever bumped its mtime, and the admin's log history must
+  # survive a reinstall); a missing file is created through a fresh
+  # root-owned staged file installed by atomic rename.
+  if [[ -L "${NOMAD_DIR}/storage/logs/admin.log" ]]; then
+    echo -e "${RED}#${RESET} ${NOMAD_DIR}/storage/logs/admin.log is a symlink. Aborting."
+    exit 1
+  fi
+  if [[ -e "${NOMAD_DIR}/storage/logs/admin.log" && ! -f "${NOMAD_DIR}/storage/logs/admin.log" ]]; then
+    echo -e "${RED}#${RESET} ${NOMAD_DIR}/storage/logs/admin.log is not a regular file. Aborting."
+    exit 1
+  fi
+  if [[ ! -e "${NOMAD_DIR}/storage/logs/admin.log" ]]; then
+    local staged_log
+    staged_log="$(sudo mktemp "${NOMAD_DIR}/storage/logs/.admin.log.XXXXXXXX")"
+    sudo chmod 644 "${staged_log}"
+    sudo mv -fT "${staged_log}" "${NOMAD_DIR}/storage/logs/admin.log"
+  fi
+}
+
+# Write a state marker beneath the root-owned storage tree without ever
+# opening an attacker-influenceable path: the parent component and the
+# destination must be a real directory and a regular file (or missing) —
+# a planted symlink or non-regular file is refused, never followed. The
+# content goes into a fresh root-owned staged file (mktemp creates it
+# O_EXCL in the destination's directory, so the later rename is same-
+# filesystem) and mv -T installs it atomically; rename(2) replaces the
+# destination without ever dereferencing it.
+write_nomad_marker() {
+  local dest="$1" content="$2" parent tmp
+  parent="$(dirname "${dest}")"
+  if [[ -L "${parent}" || ! -d "${parent}" ]]; then
+    echo -e "${RED}#${RESET} ${parent} is a symlink or not a directory. Aborting."
+    exit 1
+  fi
+  if [[ -L "${dest}" ]]; then
+    echo -e "${RED}#${RESET} ${dest} is a symlink. Aborting."
+    exit 1
+  fi
+  if [[ -e "${dest}" && ! -f "${dest}" ]]; then
+    echo -e "${RED}#${RESET} ${dest} is not a regular file. Aborting."
+    exit 1
+  fi
+  tmp="$(sudo mktemp "${dest}.tmp.XXXXXXXX")" || {
+    echo -e "${RED}#${RESET} Failed to stage ${dest}. Aborting."
+    exit 1
+  }
+  printf '%s\n' "${content}" | sudo tee "${tmp}" > /dev/null
+  sudo chmod 644 "${tmp}"
+  sudo mv -fT "${tmp}" "${dest}"
 }
 
 # Rewrite upstream's mutable image tags to the digest pins. Runs on the
@@ -599,9 +680,9 @@ verify_gpu_setup() {
   # only reliable way for the admin to know an AMD GPU is present at install time.
   local gpu_marker_path="${NOMAD_DIR}/storage/.nomad-gpu-type"
   if command -v nvidia-smi &> /dev/null; then
-    echo 'nvidia' | sudo tee "${gpu_marker_path}" > /dev/null 2>&1 || true
+    write_nomad_marker "${gpu_marker_path}" 'nvidia'
   elif [[ "${has_amd_gpu}" == 'true' ]]; then
-    echo 'amd' | sudo tee "${gpu_marker_path}" > /dev/null 2>&1 || true
+    write_nomad_marker "${gpu_marker_path}" 'amd'
   else
     sudo rm -f "${gpu_marker_path}" 2>/dev/null || true
   fi
@@ -611,7 +692,7 @@ verify_gpu_setup() {
   # to its built-in default. Always rewrite (or remove) on install to keep state fresh.
   local amd_gfx_marker_path="${NOMAD_DIR}/storage/.nomad-amd-gfx"
   if [[ -n "${amd_gfx_version}" ]]; then
-    echo "${amd_gfx_version}" | sudo tee "${amd_gfx_marker_path}" > /dev/null 2>&1 || true
+    write_nomad_marker "${amd_gfx_marker_path}" "${amd_gfx_version}"
   else
     sudo rm -f "${amd_gfx_marker_path}" 2>/dev/null || true
   fi
