@@ -63,18 +63,24 @@ cannot change what root executes.
 ### One-time entry install
 
 Before the first privileged action — and again after a plugin update that
-bumps the sealing commit — run this once from a terminal. It fetches the
-entry from the plugin's GitHub and installs it root-owned at a fixed path:
+bumps the sealing commit — run this once from a terminal. A single
+root-owned process downloads the entry into its own private temporary
+directory (mode 700, unprivileged users cannot read or write it), verifies
+the pinned sha256 **there**, installs it root-owned at a fixed path, and
+removes the staging directory when the process exits — success or failure:
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/SlowburnAZ/omanomad/main/bin/entry.sh" -o /tmp/omanomad-entry
-echo "89461cfe77378eced0cf7e75880bde186ece2e03adc65ff8162e72d069705fd6  /tmp/omanomad-entry" | sha256sum -c --strict && sudo bash -c 'echo "89461cfe77378eced0cf7e75880bde186ece2e03adc65ff8162e72d069705fd6  /tmp/omanomad-entry" | sha256sum -c --strict && install -d -m 755 /usr/local/share/omanomad && install -m 700 /tmp/omanomad-entry /usr/local/share/omanomad/entry'
+sudo bash -c 'd=$(mktemp -d /tmp/omanomad-entry.XXXXXXXXXX); chmod 700 "$d"; trap "rm -rf \"$d\"" EXIT; curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 120 --max-filesize 1048576 "https://raw.githubusercontent.com/SlowburnAZ/omanomad/main/bin/entry.sh" -o "$d/entry" && echo "89461cfe77378eced0cf7e75880bde186ece2e03adc65ff8162e72d069705fd6  $d/entry" | sha256sum -c --strict && install -d -m 755 /usr/local/share/omanomad && install -m 700 "$d/entry" /usr/local/share/omanomad/entry'
 ```
 
-The fetch locator (`main`) is just transport: the sha256 on the line above
-pins the entry's exact bytes, and **root re-verifies it immediately before
-installing** — a moved branch or a tampered download cannot substitute a
-different entry. Take this command from this README **as published on
+The fetch locator (`main`) is just transport: the pinned sha256 is the
+trust anchor, and the same privileged process that downloads the bytes also
+verifies and installs them — inside the root-private staging directory, and
+from there into `/usr/local/share/omanomad`, both of which the unprivileged
+user cannot write. There is no window where a user-writable file sits
+between verification and installation, and the staged bytes are removed
+with the process, so nothing attacker-influenceable survives a failed or
+interrupted run. Take this command from this README **as published on
 GitHub** — not from any local copy, which is user-writable. After a
 release that changes the entry, the hash above is updated in the same
 release.
