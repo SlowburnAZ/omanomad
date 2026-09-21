@@ -22,8 +22,8 @@
 # bin/ layout).
 set -euo pipefail
 
-SEALED_SHA="5fcfaa063aacaf25c549efbf6c908064acc5a162"
-SEALER_SHA256="ce89d692864da93de7867cf348f902b21bb31f8cf4625f8c771aab10ca0d5b51"
+SEALED_SHA="4f9697e926a6ab057d1c7de3170104e7e9adc1e6"
+SEALER_SHA256="08201eff0feaf94129c9f4294543188ff54b6fedbbb5a8bff05bd42a1e2973d4"
 
 STORE="${OMANOMAD_STORE:-/usr/local/share/omanomad/bin}"
 UPSTREAM="${OMANOMAD_UPSTREAM_BASE:-https://raw.githubusercontent.com/SlowburnAZ/omanomad}"
