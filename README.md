@@ -17,50 +17,7 @@ To remove the plugin itself: `omarchy plugin remove slowburnaz.omanomad`. The NO
 stack stays installed until you uninstall it from the panel (see
 [Uninstall and `--purge-data`](#uninstall-and---purge-data)).
 
-## Requirements
-
-- Arch-based system (Omarchy), `x86_64` (other architectures warn and continue, upstream images are x86_64-only)
-- 5 GB free disk space
-- Docker — installed automatically from the official Arch repos via pacman; nothing to do by hand
-
-## VPNs
-
-Disconnect before installing, updating, or running: the panel detects a
-running stack by polling `http://localhost:8080/api/health`, and some VPN
-clients (observed with Nym) break localhost HTTP entirely — the panel then
-shows an unreachable-health error with a disconnect hint instead of a state.
-A refused or reset connection simply reports stopped (nothing listening yet,
-or the stack still starting); the hint only fires on genuine observability
-failures such as timeouts.
-The installer also derives the printed LAN URL from the default route, so it
-shows the VPN endpoint instead of the LAN address while connected.
-
-## What the panel does
-
-| UI action                | Command run                                                  |
-|--------------------------|--------------------------------------------------------------|
-| Status polling           | `bin/status.sh` (unprivileged; every `refreshIntervalSec` in panel, every 2 min for the bar icon; refused/reset health (curl 7/52/56) counts as stopped, other curl failures exit 2 + reason) |
-| Retry status check       | re-runs `bin/status.sh` immediately (unknown state)          |
-| Install                  | floating terminal: sealed helper runs `install.sh`           |
-| Start / Stop (icon)      | sealed helper runs `start.sh` / `stop.sh`; start also restarts installed components once the Command Center is healthy |
-| Stack update (icon)      | floating terminal: sealed helper runs `update.sh` (confirm)  |
-| Uninstall (icon)         | opens the chooser — Just uninstall or Delete data too; each choice gets a confirmation dialog |
-| — Just uninstall         | floating terminal: sealed helper runs `uninstall.sh` (confirm) |
-| — Delete data too        | floating terminal: sealed helper runs `uninstall.sh --purge-data` (confirm) |
-| Open Command Center      | browser at `http://localhost:8080`                           |
-
-## Privileged helper
-
-Install, stack update, uninstall, start, and stop run as root — but never
-from the plugin checkout itself. Root work goes through a small **entry**
-program that lives outside the plugin tree and owns the entire privileged
-program plus its trust constants (the validated commit sha and the
-sealer's checksum). The panel only ever invokes the fixed root-owned path
-with small action tokens — no shell program, commit sha, or digest ever
-reaches root from the user-writable checkout, so a tampered checkout
-cannot change what root executes.
-
-### One-time entry install
+## One-time entry install
 
 Before the first privileged action — and again after a plugin update that
 bumps the sealing commit — run this once from a terminal. A single
@@ -83,7 +40,58 @@ with the process, so nothing attacker-influenceable survives a failed or
 interrupted run. Take this command from this README **as published on
 GitHub** — not from any local copy, which is user-writable. After a
 release that changes the entry, the hash above is updated in the same
-release.
+release. How the installed entry validates and runs privileged actions is
+described under [Privileged helper](#privileged-helper).
+
+## Requirements
+
+- Arch-based system (Omarchy), `x86_64` (other architectures warn and continue, upstream images are x86_64-only)
+- 5 GB free disk space
+- Docker — installed automatically from the official Arch repos via pacman; nothing to do by hand
+
+## VPNs
+
+Disconnect before installing, updating, or running: the panel detects a
+running stack by polling `http://localhost:8080/api/health`, and some VPN
+clients (observed with Nym) break localhost HTTP entirely — the panel then
+shows an unreachable-health error with a disconnect hint instead of a state.
+A refused or reset connection simply reports stopped (nothing listening yet,
+or the stack still starting); the hint only fires on genuine observability
+failures such as timeouts.
+The installer also derives the printed LAN URL from the default route, so it
+shows the VPN endpoint instead of the LAN address while connected.
+
+VPNs with a **local network sharing** option — Mullvad calls it "Local
+Network Sharing" — can keep the VPN enabled instead: enabling it exempts
+local devices from the tunnel, so `localhost:8080` stays reachable and
+Project NOMAD works without disconnecting.
+
+## What the panel does
+
+| UI action                | Command run                                                  |
+|--------------------------|--------------------------------------------------------------|
+| Status polling           | `bin/status.sh` (unprivileged; every `refreshIntervalSec` in panel, every 2 min for the bar icon; refused/reset health (curl 7/52/56) counts as stopped, other curl failures exit 2 + reason) |
+| Retry status check       | re-runs `bin/status.sh` immediately (unknown state)          |
+| Install                  | floating terminal: sealed helper runs `install.sh`           |
+| Start / Stop (icon)      | sealed helper runs `start.sh` / `stop.sh`; start also restarts installed components once the Command Center is healthy |
+| Stack update (icon)      | floating terminal: sealed helper runs `update.sh` (confirm)  |
+| Uninstall (icon)         | opens the chooser — Just uninstall or Delete data too; each choice gets a confirmation dialog |
+| — Just uninstall         | floating terminal: sealed helper runs `uninstall.sh` (confirm) |
+| — Delete data too        | floating terminal: sealed helper runs `uninstall.sh --purge-data` (confirm) |
+| Open Command Center      | browser at `http://localhost:8080`                           |
+
+## Privileged helper
+
+The entry is installed once via the command in
+[One-time entry install](#one-time-entry-install). Install, stack update,
+uninstall, start, and stop run as root — but never
+from the plugin checkout itself. Root work goes through a small **entry**
+program that lives outside the plugin tree and owns the entire privileged
+program plus its trust constants (the validated commit sha and the
+sealer's checksum). The panel only ever invokes the fixed root-owned path
+with small action tokens — no shell program, commit sha, or digest ever
+reaches root from the user-writable checkout, so a tampered checkout
+cannot change what root executes.
 
 When you then trigger a privileged action, pkexec asks once for
 confirmation and the root-owned entry takes over: it fetches the sealer
