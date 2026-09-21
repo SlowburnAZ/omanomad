@@ -78,6 +78,16 @@ chmod 755 "$(dirname "$STORE")/run.sh" \
   "$STORE/install.sh" "$STORE/start.sh" "$STORE/stop.sh" \
   "$STORE/uninstall.sh" "$STORE/update.sh"
 
+# The privileged entry lives beside the store; the blanket find-chmod above
+# would strip its exec bit (700 → 644), after which pkexec cannot launch it
+# and every privileged action fails with "Permission denied". Restore the
+# documented 700 whenever an entry is installed there. Nothing is created:
+# a missing entry simply skips this (sealing does not require one).
+entry="$(dirname "$STORE")/entry"
+if [[ -f "$entry" && ! -L "$entry" ]]; then
+  chmod 700 "$entry"
+fi
+
 (cd "$STORE" && sha256sum install.sh start.sh stop.sh uninstall.sh update.sh lib/preflight.sh) \
   | install -m 644 -o root -g root /dev/stdin "${ETCDIR}/SHA256SUMS"
 printf '%s\n' "$REF" | install -m 644 -o root -g root /dev/stdin "${ETCDIR}/SOURCE"

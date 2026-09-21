@@ -24,21 +24,18 @@ if [[ ! -f "$RUN" || ! -f "$PINS" || ! -f "$RECORDED" || "$entry_present" == "ab
 fi
 
 BINDIR="$(dirname "${BASH_SOURCE[0]}")"
-current=""
-if [[ -e "${BINDIR}/../.git" ]] && command -v git &> /dev/null; then
-  # The helper is sealed from an immutable, marketplace-validated
-  # commit; the checkout is current when HEAD is exactly that commit.
-  current="$(git -C "${BINDIR}/.." rev-parse HEAD 2>/dev/null)"
-fi
-if [[ -z "$current" ]]; then
-  tree_hash="$(cd "$BINDIR" && sha256sum install.sh start.sh stop.sh uninstall.sh update.sh lib/preflight.sh lib/run.sh lib/seal.sh 2>/dev/null | sha256sum | cut -d' ' -f1)"
-  current="tree:${tree_hash}"
-fi
-
-recorded="$(cat "$RECORDED" 2>/dev/null)"
-if [[ -n "$current" && "$current" == "$recorded" ]]; then
+# Content identity: the sealed store's SHA256SUMS pins exactly what root
+# runs, and the checkout is current when its lifecycle set hashes to the
+# same bytes. (Comparing HEAD against the recorded sealing commit could
+# never read ok: the release merge is always one constants-commit past the
+# sealing commit, so every freshly sealed helper reported stale. Root
+# verifies these same pins on every privileged run regardless; this signal
+# only drives the panel's refresh prompt.)
+sealed="$(cat "$PINS" 2>/dev/null)"
+current="$(cd "$BINDIR" && sha256sum install.sh start.sh stop.sh uninstall.sh update.sh lib/preflight.sh 2>/dev/null)"
+if [[ -n "$sealed" && -n "$current" && "$current" == "$sealed" ]]; then
   echo "state=ok"
 else
   echo "state=stale"
 fi
-echo "source=${current}"
+echo "source=$(cat "$RECORDED" 2>/dev/null)"
