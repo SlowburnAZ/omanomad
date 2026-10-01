@@ -16,11 +16,26 @@ elif [[ $# -gt 0 ]]; then
   exit 1
 fi
 
-if [[ -f "$COMPOSE_FILE" ]]; then
-  echo "Stopping and removing Project NOMAD containers..."
-  if ! sudo docker compose -p project-nomad -f "$COMPOSE_FILE" down; then
-    echo "Failed to remove Project NOMAD containers. Please check the logs and try again." >&2
-    exit 1
+# Compose trust boundary (sourced library): on a legacy install whose
+# /opt/project-nomad or compose.yml is not root-owned, the compose
+# definition is attacker-influenceable — `docker compose down` must never
+# read it. The containers are then left for the user to stop from the
+# panel (Stop never reads the compose file) or remove manually; the file
+# itself is deleted below either way.
+# shellcheck source=bin/lib/preflight.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/preflight.sh"
+
+if [[ -e "$COMPOSE_FILE" ]]; then
+  if compose_boundary_trusted; then
+    echo "Stopping and removing Project NOMAD containers..."
+    if ! sudo docker compose -p project-nomad -f "$COMPOSE_FILE" down; then
+      echo "Failed to remove Project NOMAD containers. Please check the logs and try again." >&2
+      exit 1
+    fi
+  else
+    echo "compose.yml is not a root-owned regular file (legacy install boundary); refusing to pass it to Docker."
+    echo "Skipping container removal. Stop the stack from the panel, or remove leftover containers with:"
+    echo "  sudo docker ps -aq --filter label=com.docker.compose.project=project-nomad | xargs -r sudo docker rm -f"
   fi
 else
   echo "No compose file at ${COMPOSE_FILE}; skipping container removal."

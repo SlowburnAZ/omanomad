@@ -97,82 +97,16 @@ ensure_docker_installed_and_running() {
 
 
 ensure_docker_compose_file_exists() {
-  if [[ ! -f "${NOMAD_DIR}/compose.yml" ]]; then
-    echo -e "${RED}#${RESET} compose.yml file not found. Please ensure it exists at ${NOMAD_DIR}/compose.yml."
-    exit 1
-  fi
   # A stack update must never pull "whatever a tag holds now": every image
-  # line must carry the digest pinned by the validated plugin release. A
-  # compose file from before digest pinning existed (plugin < v0.3.0) is
-  # healed in place below instead of forcing a reinstall: a reinstall
-  # regenerates the stack secrets and resets the MySQL data directory,
-  # which would wipe the admin's database. The heal rewrites only the
-  # image references and the self-URL; secrets and data are preserved.
-  if ! grep -E '^[[:space:]]*image:' "${NOMAD_DIR}/compose.yml" | grep -v '@' | grep -q .; then
-    return
-  fi
-  heal_legacy_compose
-}
-
-heal_legacy_compose() {
-  echo -e "${YELLOW}#${RESET} compose.yml predates digest pinning. Re-pinning images by digest in place (stack secrets and data preserved)...\\n"
-
-  # Carry over the stack's existing secrets verbatim; the MySQL data
-  # directory stays valid and untouched. If any secret is missing this is
-  # not a state we can heal: refuse without modifying the file.
-  local app_key db_root_password db_user_password
-  app_key="$(grep -m1 -o 'APP_KEY=[^[:space:]]*' "${NOMAD_DIR}/compose.yml" | head -1 | cut -d= -f2-)"
-  db_root_password="$(grep -m1 -o 'MYSQL_ROOT_PASSWORD=[^[:space:]]*' "${NOMAD_DIR}/compose.yml" | head -1 | cut -d= -f2-)"
-  db_user_password="$(grep -m1 -o 'MYSQL_PASSWORD=[^[:space:]]*' "${NOMAD_DIR}/compose.yml" | head -1 | cut -d= -f2-)"
-  if [[ -z "$app_key" || -z "$db_root_password" || -z "$db_user_password" ]]; then
-    echo -e "${RED}#${RESET} compose.yml contains mutable image references and its secrets cannot be carried over. Reinstall Project NOMAD to re-pin images by digest."
-    exit 1
-  fi
-
-  # Fetch the pinned upstream compose into a private staged file in the
-  # root-owned install directory, rewrite it there, and install it
-  # atomically. The EXIT trap cleans the stage on any refusal; compose.yml
-  # is only ever replaced by a rename of fully validated bytes.
-  local staged
-  staged="$(mktemp "${NOMAD_DIR}/.compose-heal.XXXXXXXX")"
-  trap 'rm -f "$staged"' EXIT
-  if ! fetch_verified "$MANAGEMENT_COMPOSE_FILE_URL" "$MANAGEMENT_COMPOSE_FILE_SHA256" "$staged" 600; then
-    echo -e "${RED}#${RESET} Failed to download the docker compose file or it failed verification. Please try again."
-    exit 1
-  fi
-
-  pin_image_digests "$staged"
-
-  # Same substitutions install.sh performs on a fresh install; the
-  # secrets come from the old compose instead of the generator, so MySQL
-  # accepts the existing data directory. The self-URL is refreshed to the
-  # current LAN address, matching what a fresh install would write.
-  sed -i "s|URL=replaceme|URL=http://${local_ip_address}:8080|g" "$staged"
-  sed -i "s|APP_KEY=replaceme|APP_KEY=${app_key}|g" "$staged"
-  sed -i "s|DB_PASSWORD=replaceme|DB_PASSWORD=${db_user_password}|g" "$staged"
-  sed -i "s|MYSQL_ROOT_PASSWORD=replaceme|MYSQL_ROOT_PASSWORD=${db_root_password}|g" "$staged"
-  sed -i "s|MYSQL_PASSWORD=replaceme|MYSQL_PASSWORD=${db_user_password}|g" "$staged"
-
-  # Validate the healed file before it replaces the working one: every
-  # placeholder consumed (KEY=replaceme form — upstream's own prose also
-  # mentions the word, so match the assignment shape), every carried
-  # secret present, URL refreshed.
-  if grep -qE '[A-Z_]+=replaceme' "$staged" \
-    || ! grep -Fq "URL=http://${local_ip_address}:8080" "$staged" \
-    || ! grep -Fq "APP_KEY=${app_key}" "$staged" \
-    || ! grep -Fq "MYSQL_ROOT_PASSWORD=${db_root_password}" "$staged" \
-    || ! grep -Fq "MYSQL_PASSWORD=${db_user_password}" "$staged"; then
-    echo -e "${RED}#${RESET} Healed compose file failed validation. Aborting without changes."
-    exit 1
-  fi
-
-  if [[ -L "${NOMAD_DIR}/compose.yml" || ( -e "${NOMAD_DIR}/compose.yml" && ! -f "${NOMAD_DIR}/compose.yml" ) ]]; then
-    echo -e "${RED}#${RESET} ${NOMAD_DIR}/compose.yml is not a regular file. Aborting."
-    exit 1
-  fi
-  mv -fT "$staged" "${NOMAD_DIR}/compose.yml"
-  trap - EXIT
-  echo -e "${GREEN}#${RESET} compose.yml re-pinned by digest; stack secrets and data preserved.\\n"
+  # line must carry the digest pinned by the validated plugin release. The
+  # shared boundary check first reclaims the install directory and refuses
+  # a non-regular file, then heals a compose file that is not root-owned
+  # (a legacy user-writable boundary) or still carries mutable image
+  # references in place: a reinstall would regenerate the stack secrets
+  # and reset the MySQL data directory, which would wipe the admin's
+  # database. The heal rewrites the definition and image references;
+  # secrets and data are preserved.
+  ensure_trusted_compose_file
 }
 
 force_recreate() {
