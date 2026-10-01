@@ -119,7 +119,13 @@ user-writable storage.
 
 The stack's container images are likewise pinned by immutable digest in
 the compose file (see *Upstream divergences*), so an upstream tag change
-cannot swap the running images underneath an approved install.
+cannot swap the running images underneath an approved install. The
+install directory and the compose definition are held to the same
+standard: before every privileged start, update, or uninstall,
+`/opt/project-nomad` and its `compose.yml` are reclaimed root-owned
+(legacy user-owned installs are migrated in place — secrets and data
+preserved), and a definition that is not provably root-owned is rebuilt
+from the pinned upstream compose rather than passed to Docker.
 
 To remove the helper (e.g. before removing the plugin):
 `sudo rm -rf /usr/local/share/omanomad /etc/omanomad`.

@@ -1,13 +1,15 @@
 #!/bin/bash
 # omanomad: start the Project NOMAD stack.
 # Non-interactive — the panel UI owns confirmation (runs via pkexec).
-NOMAD_DIR="/opt/project-nomad"
-COMPOSE_FILE="${NOMAD_DIR}/compose.yml"
 
-if [[ ! -f "$COMPOSE_FILE" ]]; then
-  echo "Project NOMAD is not installed (no ${COMPOSE_FILE}). Install it first." >&2
-  exit 1
-fi
+# Shared compose trust boundary: the directory and compose.yml are
+# reclaimed/reconstructed root-owned before the definition is passed to
+# root docker (a legacy user-writable boundary could otherwise swap the
+# stack definition underneath an authorized Start).
+# shellcheck source=bin/lib/preflight.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/preflight.sh"
+
+COMPOSE_FILE="${NOMAD_DIR}/compose.yml"
 
 if ! systemctl is-active --quiet docker; then
   echo "Docker is not running. Attempting to start Docker..."
@@ -17,6 +19,8 @@ if ! systemctl is-active --quiet docker; then
     exit 1
   fi
 fi
+
+ensure_trusted_compose_file
 
 sudo docker compose -p project-nomad -f "$COMPOSE_FILE" up -d
 
