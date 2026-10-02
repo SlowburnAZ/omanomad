@@ -475,14 +475,15 @@ download_management_compose_file() {
     sudo rm -rf "${NOMAD_DIR}/mysql"
   fi
 
-  # Inject dynamic env values into the compose file
+  # Inject dynamic env values into the compose file (fixed-string
+  # replacement — never sed on these values — matching the heal path).
   echo -e "${YELLOW}#${RESET} Configuring docker-compose file env variables...\\n"
-  sed -i "s|URL=replaceme|URL=http://${local_ip_address}:8080|g" "$compose_file_path"
-  sed -i "s|APP_KEY=replaceme|APP_KEY=${app_key}|g" "$compose_file_path"
+  replace_literal "$compose_file_path" "URL=replaceme" "URL=http://${local_ip_address}:8080"
+  replace_literal "$compose_file_path" "APP_KEY=replaceme" "APP_KEY=${app_key}"
 
-  sed -i "s|DB_PASSWORD=replaceme|DB_PASSWORD=${db_user_password}|g" "$compose_file_path"
-  sed -i "s|MYSQL_ROOT_PASSWORD=replaceme|MYSQL_ROOT_PASSWORD=${db_root_password}|g" "$compose_file_path"
-  sed -i "s|MYSQL_PASSWORD=replaceme|MYSQL_PASSWORD=${db_user_password}|g" "$compose_file_path"
+  replace_literal "$compose_file_path" "DB_PASSWORD=replaceme" "DB_PASSWORD=${db_user_password}"
+  replace_literal "$compose_file_path" "MYSQL_ROOT_PASSWORD=replaceme" "MYSQL_ROOT_PASSWORD=${db_root_password}"
+  replace_literal "$compose_file_path" "MYSQL_PASSWORD=replaceme" "MYSQL_PASSWORD=${db_user_password}"
 
   # The compose file holds APP_KEY and the DB passwords once configured:
   # make it root-only so other local users cannot read the secrets.

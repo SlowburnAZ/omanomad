@@ -261,6 +261,24 @@ compose_boundary_trusted() {
   (( (8#$perms & 8#022) == 0 ))
 }
 
+# Literal fixed-string replacement without invoking sed/awk/perl on the
+# values: bash parameter expansion treats the replacement literally (no
+# `&`, `\`, `|` interpretation, no `e`/`w`/`r` flags), so a carried-over
+# secret can never become sed program syntax. Rewrites the file through a
+# temp file to preserve the destination's ownership and mode.
+replace_literal() {
+  local file="$1" needle="$2" value="$3"
+  local tmp line
+  tmp="$(mktemp)" || return 1
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    printf '%s\n' "${line//"$needle"/"$value"}" >>"$tmp"
+  done <"$file"
+  cat "$tmp" >"$file"
+  local rc=$?
+  rm -f "$tmp"
+  return $rc
+}
+
 # Rebuild compose.yml from the pinned upstream definition: fetch it
 # checksum-verified, pin the images by digest, carry the stack's existing
 # secrets over verbatim (the MySQL data directory stays valid and is never
@@ -282,6 +300,15 @@ heal_compose_in_place() {
     echo -e "${RED}#${RESET} compose.yml is not trusted and its secrets cannot be carried over. Reinstall Project NOMAD to regenerate the stack definition."
     return 1
   fi
+  # The generator (generateRandomPass) emits alphanumerics only. Refuse
+  # anything else: carried-over values are interpolated below, and a
+  # legacy user-writable file could otherwise smuggle sed program syntax
+  # (`|e`/`w`/`r` flags) or compose structure into the rebuilt definition.
+  local secret_re='^[A-Za-z0-9]+$'
+  if [[ ! "$app_key" =~ $secret_re || ! "$db_root_password" =~ $secret_re || ! "$db_user_password" =~ $secret_re ]]; then
+    echo -e "${RED}#${RESET} compose.yml is not trusted and its secrets are not in the expected format. Reinstall Project NOMAD to regenerate the stack definition."
+    return 1
+  fi
 
   # Fetch the pinned upstream compose into a private staged file in the
   # root-owned install directory, rewrite it there, and install it
@@ -301,14 +328,15 @@ heal_compose_in_place() {
   # secrets come from the old compose instead of the generator, so MySQL
   # accepts the existing data directory. The self-URL is refreshed to the
   # current LAN address, matching what a fresh install would write.
+  # Fixed-string replacement only (never sed on carried-over values).
   if [[ -z "$local_ip_address" ]]; then
     get_local_ip
   fi
-  sed -i "s|URL=replaceme|URL=http://${local_ip_address}:8080|g" "$staged"
-  sed -i "s|APP_KEY=replaceme|APP_KEY=${app_key}|g" "$staged"
-  sed -i "s|DB_PASSWORD=replaceme|DB_PASSWORD=${db_user_password}|g" "$staged"
-  sed -i "s|MYSQL_ROOT_PASSWORD=replaceme|MYSQL_ROOT_PASSWORD=${db_root_password}|g" "$staged"
-  sed -i "s|MYSQL_PASSWORD=replaceme|MYSQL_PASSWORD=${db_user_password}|g" "$staged"
+  replace_literal "$staged" "URL=replaceme" "URL=http://${local_ip_address}:8080" || return 1
+  replace_literal "$staged" "APP_KEY=replaceme" "APP_KEY=${app_key}" || return 1
+  replace_literal "$staged" "DB_PASSWORD=replaceme" "DB_PASSWORD=${db_user_password}" || return 1
+  replace_literal "$staged" "MYSQL_ROOT_PASSWORD=replaceme" "MYSQL_ROOT_PASSWORD=${db_root_password}" || return 1
+  replace_literal "$staged" "MYSQL_PASSWORD=replaceme" "MYSQL_PASSWORD=${db_user_password}" || return 1
 
   # Validate the healed file before it replaces the working one: every
   # placeholder consumed (KEY=replaceme form — upstream's own prose also
