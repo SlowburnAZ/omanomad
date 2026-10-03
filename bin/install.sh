@@ -482,8 +482,9 @@ download_management_compose_file() {
   replace_literal "$compose_file_path" "MYSQL_ROOT_PASSWORD=replaceme" "MYSQL_ROOT_PASSWORD=${db_root_password}"
   replace_literal "$compose_file_path" "MYSQL_PASSWORD=replaceme" "MYSQL_PASSWORD=${db_user_password}"
 
-  # Bind the admin port to loopback for the same reason (see preflight.sh).
-  pin_admin_port_localhost "$compose_file_path"
+  # Bind the published ports (admin, log viewer) to loopback for the same
+  # reason (see preflight.sh): neither UI has authentication.
+  pin_ports_localhost "$compose_file_path"
 
   # The compose file holds APP_KEY and the DB passwords once configured:
   # make it root-only so other local users cannot read the secrets.
@@ -645,7 +646,7 @@ success_message() {
   echo -e "${GREEN}#${RESET} Installation files are located at /opt/project-nomad\\n\n"
   echo -e "${GREEN}#${RESET} Project NOMAD's Command Center should automatically start whenever your device reboots. However, if you need to start it manually, you can always do so by running: ${WHITE_R}${NOMAD_DIR}/start_nomad.sh${RESET}\\n"
   echo -e "${GREEN}#${RESET} You can now access the management interface at http://localhost:8080\\n"
-  echo -e "${GREEN}#${RESET} The admin port is bound to localhost only: the admin API has no authentication, so it is never exposed to the local network.\\n"
+  echo -e "${GREEN}#${RESET} The admin and log-viewer ports are bound to localhost only: neither UI has authentication, so they are never exposed to the local network.\\n"
   echo -e "${GREEN}#${RESET} Thank you for supporting Project NOMAD!\\n"
 }
 

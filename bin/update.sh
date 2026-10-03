@@ -99,8 +99,8 @@ ensure_docker_compose_file_exists() {
   # references in place: a reinstall would regenerate the stack secrets
   # and reset the MySQL data directory, which would wipe the admin's
   # database. The heal rewrites the definition and image references;
-  # secrets and data are preserved. The boundary also enforces the
-  # loopback admin port (the admin API has no authentication).
+  # secrets and data are preserved. The boundary also enforces loopback-only
+  # published ports (admin, log viewer — neither UI has authentication).
   ensure_trusted_compose_file
 }
 
@@ -123,7 +123,7 @@ success_message() {
   echo -e "${GREEN}#${RESET} Project NOMAD update completed successfully!\\n"
   echo -e "${GREEN}#${RESET} Installation files are located at /opt/project-nomad\\n\n"
   echo -e "${GREEN}#${RESET} Project NOMAD's Command Center should automatically start whenever your device reboots. However, if you need to start it manually, you can always do so by running: ${WHITE_R}${NOMAD_DIR}/start_nomad.sh${RESET}\\n"
-  echo -e "${GREEN}#${RESET} You can now access the management interface at http://localhost:8080 (bound to localhost only; the admin API has no authentication).\\n"
+  echo -e "${GREEN}#${RESET} You can now access the management interface at http://localhost:8080 (ports bound to localhost only; neither UI has authentication).\\n"
   echo -e "${GREEN}#${RESET} Thank you for supporting Project NOMAD!\\n"
 }
 
