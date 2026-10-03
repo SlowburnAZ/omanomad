@@ -27,7 +27,7 @@ the pinned sha256 **there**, installs it root-owned at a fixed path, and
 removes the staging directory when the process exits — success or failure:
 
 ```bash
-sudo bash -c 'd=$(mktemp -d /tmp/omanomad-entry.XXXXXXXXXX); chmod 700 "$d"; trap "rm -rf \"$d\"" EXIT; curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 120 --max-filesize 1048576 "https://raw.githubusercontent.com/SlowburnAZ/omanomad/main/bin/entry.sh" -o "$d/entry" && echo "a5999a883f0c03b966e5ff37fe2734f1d1f0490646838b34780f8fbf599943ef  $d/entry" | sha256sum -c --strict && install -d -m 755 /usr/local/share/omanomad && install -m 700 "$d/entry" /usr/local/share/omanomad/entry'
+sudo bash -c 'd=$(mktemp -d /tmp/omanomad-entry.XXXXXXXXXX); chmod 700 "$d"; trap "rm -rf \"$d\"" EXIT; curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 120 --max-filesize 1048576 "https://raw.githubusercontent.com/SlowburnAZ/omanomad/main/bin/entry.sh" -o "$d/entry" && echo "f88fe2b33bb0870ccedf774a0edc4994410d2a771b7bc0639026756ffbb806a3  $d/entry" | sha256sum -c --strict && install -d -m 755 /usr/local/share/omanomad && install -m 700 "$d/entry" /usr/local/share/omanomad/entry'
 ```
 
 The fetch locator (`main`) is just transport: the pinned sha256 is the
@@ -59,9 +59,11 @@ A refused or reset connection simply reports stopped (nothing listening yet,
 or the stack still starting); the hint only fires on genuine observability
 failures such as timeouts.
 
-The admin port is bound to `127.0.0.1` on every install (fresh, healed, and
-migrated in place on update/start): the admin API has no authentication, so
-it is never published to the local network. The Command Center is reachable
+The admin and log-viewer (Dozzle) ports are bound to `127.0.0.1` on every
+install (fresh, healed, and migrated in place on update/start): the admin
+API has no authentication and Dozzle serves every host container's logs
+with no container filter, so neither is ever published to the local
+network. The Command Center is reachable
 at `http://localhost:8080` from this machine only — not from phones, tablets,
 or other LAN devices. VPN local-network-sharing options are therefore
 unnecessary for Project NOMAD; if a VPN client breaks localhost HTTP itself
@@ -174,9 +176,10 @@ Stack update is an Arch port of upstream `install/update_nomad.sh` (v1.0.1)
 with the same adaptations (Arch gate, `sudo`-prefixed compose calls).
 Shared pre-flight checks and colors live once in `bin/lib/preflight.sh`,
 sourced by both scripts. One deliberate divergence from upstream: the admin
-port is bound to `127.0.0.1` instead of all interfaces (fresh installs, heal
-rebuilds, and in-place migration on update/start), because the admin API has
-no authentication.
+and log-viewer (Dozzle) ports are bound to `127.0.0.1` instead of all
+interfaces (fresh installs, heal rebuilds, and in-place migration on
+update/start), because the admin API has no authentication and Dozzle
+serves unfiltered container logs.
 
 ## License
 

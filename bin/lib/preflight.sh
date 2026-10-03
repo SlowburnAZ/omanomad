@@ -194,11 +194,12 @@ pin_image_digests() {
 # pinned, checksum-verified upstream definition (images digest-pinned,
 # stack secrets carried over verbatim so the existing MySQL data stays
 # valid) and installed atomically, 600 root-owned. Every refusal aborts
-# before docker ever sees the file. The same boundary enforces the
-# loopback admin port: the admin API has no authentication (upstream
-# design), so a LAN-published admin would expose the container-management
-# API to every LAN peer. Fresh installs and heal rebuilds bind it to
-# 127.0.0.1; pre-fix installs migrate the shipped stock line in place.
+# before docker ever sees the file. The same boundary enforces loopback-only
+# published ports: the admin API has no authentication (upstream design) and
+# Dozzle serves every host container's logs with no container filter, so a
+# LAN-published admin or log viewer would expose private host data to every
+# LAN peer. Fresh installs and heal rebuilds bind both to 127.0.0.1; pre-fix
+# installs migrate the shipped stock lines in place.
 
 # Refuse a compose file that is not a regular file (a planted symlink or
 # FIFO must never be read, followed, or replaced by root).
@@ -248,62 +249,73 @@ compose_boundary_trusted() {
   (( (8#$perms & 8#022) == 0 ))
 }
 
-# Admin-port boundary: the admin API has no authentication (upstream
-# design), so container-8080 must never be published beyond loopback —
-# otherwise any LAN peer can drive the container-management API against
-# private host files. Scoped to the admin service block: dozzle publishes
-# its own container-8080 on 9999 and is intentionally left as upstream
-# ships it (its privileged actions are disabled upstream).
+# Published-port boundary: the admin API has no authentication (upstream
+# design), and Dozzle serves every host container's logs with no container
+# filter — so neither UI may be published beyond loopback. Otherwise any LAN
+# peer can drive the container-management API against private host files or
+# read other containers' logs. Scoped to the admin and dozzle service blocks
+# (both publish container-8080).
 
-# Print the admin service block (lines between `  admin:` and the next
+# Print one service block (lines between `  <name>:` and the next
 # top-level service). Deployed files derive from the same template, so the
 # two-space service layout holds.
-admin_service_block() {
-  awk '/^  admin:/{in_admin=1; next} /^  [A-Za-z]/{in_admin=0} in_admin' "${NOMAD_DIR}/compose.yml"
+service_block() {
+  awk -v svc="$1" '$0 == "  " svc ":" {in_svc=1; next} /^  [A-Za-z]/{in_svc=0} in_svc' "${NOMAD_DIR}/compose.yml"
 }
 
-# True when the admin service publishes container-8080 on a non-loopback
-# binding (short syntax with a host side, or long syntax). A bare `8080`
-# (no host binding) exposes nothing and does not count.
-admin_port_exposed() {
+# True when the given service block publishes container-8080 on a
+# non-loopback binding (short syntax with a host side, or long syntax). A
+# bare `8080` (no host binding) exposes nothing and does not count. The
+# value charset is digits/dots/colons only, so `KEY=value` environment
+# lines (e.g. `- URL=http://…:8080`) can never match as ports entries.
+service_port_exposed() {
   local block entries e
-  block="$(admin_service_block)"
+  block="$(service_block "$1")"
   if grep -E -q -- 'target:[[:space:]]*8080([[:space:]]|$)' <<<"$block"; then
     return 0
   fi
-  entries="$(grep -E -o -- '- "?[^" ]*:[^" ]*8080"?' <<<"$block" || true)"
+  entries="$(grep -E -o -- '- "?[0-9.:]*:[0-9.:]*8080"?' <<<"$block" || true)"
   [[ -z "$entries" ]] && return 1
   while IFS= read -r e; do
-    [[ "$e" == *"127.0.0.1"* ]] || return 0
+    [[ "$e" == *"127.0.0.1"* || "$e" == *"[::1]"* ]] || return 0
   done <<<"$entries"
   return 1
 }
 
-# Bind the stock upstream admin port line to loopback. Runs on the verified
-# template (fresh install, heal rebuild) where the exact line is known, and
-# on the live file only when that exact stock line is present.
-pin_admin_port_localhost() {
-  replace_literal "$1" '- "8080:8080"' '- "127.0.0.1:8080:8080"' \
-    && replace_literal "$1" '- 8080:8080' '- "127.0.0.1:8080:8080"'
+# True when either published UI (admin, log viewer) is LAN-visible.
+published_ports_exposed() {
+  service_port_exposed admin || service_port_exposed dozzle
 }
 
-# Enforce the loopback admin port on the live compose file. The exact stock
-# binding this plugin shipped is migrated in place (one line, mode and owner
+# Bind the stock upstream port lines to loopback. Runs on the verified
+# template (fresh install, heal rebuild) where the exact lines are known,
+# and on the live file only when those exact stock lines are present.
+pin_ports_localhost() {
+  replace_literal "$1" '- "8080:8080"' '- "127.0.0.1:8080:8080"' \
+    && replace_literal "$1" '- 8080:8080' '- "127.0.0.1:8080:8080"' \
+    && replace_literal "$1" '- "9999:8080"' '- "127.0.0.1:9999:8080"' \
+    && replace_literal "$1" '- 9999:8080' '- "127.0.0.1:9999:8080"'
+}
+
+# Enforce loopback-only published ports on the live compose file. The exact
+# stock bindings this plugin shipped are migrated in place (mode and owner
 # preserved, everything else untouched); any other LAN-visible publishing is
 # a deliberate root customization that cannot be safely rewritten, so refuse
 # with guidance instead of running docker against it.
-ensure_localhost_admin_port() {
-  admin_port_exposed || return 0
+ensure_localhost_ports() {
+  published_ports_exposed || return 0
   if grep -qF -- '- "8080:8080"' "${NOMAD_DIR}/compose.yml" \
-    || grep -E -q -- '-[[:space:]]+8080:8080([[:space:]]|$)' "${NOMAD_DIR}/compose.yml"; then
-    pin_admin_port_localhost "${NOMAD_DIR}/compose.yml" || return 1
+    || grep -E -q -- '-[[:space:]]+8080:8080([[:space:]]|$)' "${NOMAD_DIR}/compose.yml" \
+    || grep -qF -- '- "9999:8080"' "${NOMAD_DIR}/compose.yml" \
+    || grep -E -q -- '-[[:space:]]+9999:8080([[:space:]]|$)' "${NOMAD_DIR}/compose.yml"; then
+    pin_ports_localhost "${NOMAD_DIR}/compose.yml" || return 1
   fi
-  if admin_port_exposed; then
-    echo -e "${RED}#${RESET} compose.yml publishes the admin port beyond localhost. Rebind it to 127.0.0.1 (e.g. - \"127.0.0.1:8080:8080\") — the admin API has no authentication — then rerun. Aborting without changes."
+  if published_ports_exposed; then
+    echo -e "${RED}#${RESET} compose.yml publishes the admin or log-viewer port beyond localhost. Rebind it to 127.0.0.1 (e.g. - \"127.0.0.1:8080:8080\") — neither UI has authentication — then rerun. Aborting without changes."
     return 1
   fi
   ensure_compose_regular
-  echo -e "${GREEN}#${RESET} Admin port bound to localhost.\\n"
+  echo -e "${GREEN}#${RESET} Published ports bound to localhost.\\n"
 }
 
 # Literal fixed-string replacement without invoking sed/awk/perl on the
@@ -379,21 +391,26 @@ heal_compose_in_place() {
   replace_literal "$staged" "DB_PASSWORD=replaceme" "DB_PASSWORD=${db_user_password}" || return 1
   replace_literal "$staged" "MYSQL_ROOT_PASSWORD=replaceme" "MYSQL_ROOT_PASSWORD=${db_root_password}" || return 1
   replace_literal "$staged" "MYSQL_PASSWORD=replaceme" "MYSQL_PASSWORD=${db_user_password}" || return 1
-  # The admin API has no authentication (upstream design), so its port is
-  # bound to loopback: a LAN-published admin would let any LAN peer drive
-  # the container-management API against private host files.
-  pin_admin_port_localhost "$staged" || return 1
+  # The admin API has no authentication and Dozzle has no container filter
+  # (both upstream design), so both published ports are bound to loopback:
+  # a LAN-published admin or log viewer would expose private host data to
+  # every LAN peer.
+  pin_ports_localhost "$staged" || return 1
 
   # Validate the healed file before it replaces the working one: every
   # placeholder consumed (KEY=replaceme form — upstream's own prose also
   # mentions the word, so match the assignment shape), every carried
-  # secret present, URL loopback, admin port loopback-bound.
+  # secret present, URL loopback, both published ports loopback-bound with
+  # no LAN-visible stock lines remaining.
   if grep -qE '[A-Z_]+=replaceme' "$staged" \
     || ! grep -Fq "URL=http://localhost:8080" "$staged" \
     || ! grep -Fq "APP_KEY=${app_key}" "$staged" \
     || ! grep -Fq "MYSQL_ROOT_PASSWORD=${db_root_password}" "$staged" \
     || ! grep -Fq "MYSQL_PASSWORD=${db_user_password}" "$staged" \
-    || ! grep -Fq -- '- "127.0.0.1:8080:8080"' "$staged"; then
+    || ! grep -Fq -- '- "127.0.0.1:8080:8080"' "$staged" \
+    || ! grep -Fq -- '- "127.0.0.1:9999:8080"' "$staged" \
+    || grep -Fq -- '- "8080:8080"' "$staged" \
+    || grep -Fq -- '- "9999:8080"' "$staged"; then
     echo -e "${RED}#${RESET} Healed compose file failed validation. Aborting without changes."
     return 1
   fi
@@ -408,10 +425,10 @@ heal_compose_in_place() {
 # reclaim the directory (making the checks below race-free), refuse
 # non-regular compose files, reconstruct the definition whenever it is
 # not provably root-owned or still carries mutable image references, and
-# enforce the loopback admin port (migrating the stock binding we shipped,
-# refusing custom LAN publishings). On success compose.yml is a root-owned
-# 600 regular file with every image digest-pinned and the admin port
-# localhost-bound.
+# enforce loopback-only published ports (migrating the stock bindings we
+# shipped, refusing custom LAN publishings). On success compose.yml is a
+# root-owned 600 regular file with every image digest-pinned and both
+# published ports localhost-bound.
 ensure_trusted_compose_file() {
   reclaim_nomad_directory
   if [[ ! -f "${NOMAD_DIR}/compose.yml" ]]; then
@@ -427,8 +444,8 @@ ensure_trusted_compose_file() {
     # the canonical 600 (the file carries stack secrets). Bytes untouched.
     sudo chmod 600 "${NOMAD_DIR}/compose.yml"
   fi
-  # The heal rebuild already binds the admin port to loopback; this step
-  # migrates pre-fix installs (stock 8080:8080) in place on every
-  # privileged compose use, and refuses custom LAN publishings.
-  ensure_localhost_admin_port || exit 1
+  # The heal rebuild already binds both published ports to loopback; this
+  # step migrates pre-fix installs (stock 8080:8080 / 9999:8080) in place on
+  # every privileged compose use, and refuses custom LAN publishings.
+  ensure_localhost_ports || exit 1
 }
