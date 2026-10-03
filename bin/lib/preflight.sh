@@ -2,7 +2,7 @@
 
 # omanomad shared preflight library (sourced, never executed directly)
 #
-# Pre-flight checks, LAN discovery, and messaging shared by the lifecycle
+# Pre-flight checks and messaging shared by the lifecycle
 # scripts in bin/ (install.sh, update.sh). Source it from a lifecycle script:
 #
 #   source "$(dirname "${BASH_SOURCE[0]}")/lib/preflight.sh"
@@ -25,7 +25,6 @@ GREEN='\033[1;32m' # Light Green.
 # shellcheck disable=SC2034 # consumed by sourcing lifecycle scripts (compose paths)
 NOMAD_DIR="/opt/project-nomad"
 script_option_debug='true'
-local_ip_address=''
 
 header_red() {
   if [[ "${script_option_debug}" != 'true' ]]; then clear; clear; fi
@@ -70,22 +69,6 @@ check_docker_compose() {
     echo -e "${RED}#${RESET} Docker Compose v2 is not installed or not available as a Docker plugin."
     echo -e "${YELLOW}#${RESET} This script requires 'docker compose' (v2), not 'docker-compose' (v1)."
     echo -e "${YELLOW}#${RESET} Please read the Docker documentation at https://docs.docker.com/compose/install/ for instructions on how to install Docker Compose v2."
-    exit 1
-  fi
-}
-
-get_local_ip() {
-  # Arch's hostname (inetutils) has no -I flag, so derive the LAN source IP
-  # from the routing table instead (lookup only, no traffic is sent).
-  if command -v ip &> /dev/null; then
-    local_ip_address=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i == "src") { print $(i+1); exit } }')
-  fi
-  # Fallback for systems whose hostname does understand -I.
-  if [[ -z "$local_ip_address" ]]; then
-    local_ip_address=$(hostname -I 2>/dev/null | awk '{print $1}')
-  fi
-  if [[ -z "$local_ip_address" ]]; then
-    echo -e "${RED}#${RESET} Unable to determine local IP address. Please check your network configuration."
     exit 1
   fi
 }
@@ -211,7 +194,11 @@ pin_image_digests() {
 # pinned, checksum-verified upstream definition (images digest-pinned,
 # stack secrets carried over verbatim so the existing MySQL data stays
 # valid) and installed atomically, 600 root-owned. Every refusal aborts
-# before docker ever sees the file.
+# before docker ever sees the file. The same boundary enforces the
+# loopback admin port: the admin API has no authentication (upstream
+# design), so a LAN-published admin would expose the container-management
+# API to every LAN peer. Fresh installs and heal rebuilds bind it to
+# 127.0.0.1; pre-fix installs migrate the shipped stock line in place.
 
 # Refuse a compose file that is not a regular file (a planted symlink or
 # FIFO must never be read, followed, or replaced by root).
@@ -259,6 +246,64 @@ compose_boundary_trusted() {
   read -r owner perms <<<"$(stat -c '%u %a' "$f" 2>/dev/null)" || return 1
   [[ "$owner" == 0 ]] || return 1
   (( (8#$perms & 8#022) == 0 ))
+}
+
+# Admin-port boundary: the admin API has no authentication (upstream
+# design), so container-8080 must never be published beyond loopback —
+# otherwise any LAN peer can drive the container-management API against
+# private host files. Scoped to the admin service block: dozzle publishes
+# its own container-8080 on 9999 and is intentionally left as upstream
+# ships it (its privileged actions are disabled upstream).
+
+# Print the admin service block (lines between `  admin:` and the next
+# top-level service). Deployed files derive from the same template, so the
+# two-space service layout holds.
+admin_service_block() {
+  awk '/^  admin:/{in_admin=1; next} /^  [A-Za-z]/{in_admin=0} in_admin' "${NOMAD_DIR}/compose.yml"
+}
+
+# True when the admin service publishes container-8080 on a non-loopback
+# binding (short syntax with a host side, or long syntax). A bare `8080`
+# (no host binding) exposes nothing and does not count.
+admin_port_exposed() {
+  local block entries e
+  block="$(admin_service_block)"
+  if grep -E -q -- 'target:[[:space:]]*8080([[:space:]]|$)' <<<"$block"; then
+    return 0
+  fi
+  entries="$(grep -E -o -- '- "?[^" ]*:[^" ]*8080"?' <<<"$block" || true)"
+  [[ -z "$entries" ]] && return 1
+  while IFS= read -r e; do
+    [[ "$e" == *"127.0.0.1"* ]] || return 0
+  done <<<"$entries"
+  return 1
+}
+
+# Bind the stock upstream admin port line to loopback. Runs on the verified
+# template (fresh install, heal rebuild) where the exact line is known, and
+# on the live file only when that exact stock line is present.
+pin_admin_port_localhost() {
+  replace_literal "$1" '- "8080:8080"' '- "127.0.0.1:8080:8080"' \
+    && replace_literal "$1" '- 8080:8080' '- "127.0.0.1:8080:8080"'
+}
+
+# Enforce the loopback admin port on the live compose file. The exact stock
+# binding this plugin shipped is migrated in place (one line, mode and owner
+# preserved, everything else untouched); any other LAN-visible publishing is
+# a deliberate root customization that cannot be safely rewritten, so refuse
+# with guidance instead of running docker against it.
+ensure_localhost_admin_port() {
+  admin_port_exposed || return 0
+  if grep -qF -- '- "8080:8080"' "${NOMAD_DIR}/compose.yml" \
+    || grep -E -q -- '-[[:space:]]+8080:8080([[:space:]]|$)' "${NOMAD_DIR}/compose.yml"; then
+    pin_admin_port_localhost "${NOMAD_DIR}/compose.yml" || return 1
+  fi
+  if admin_port_exposed; then
+    echo -e "${RED}#${RESET} compose.yml publishes the admin port beyond localhost. Rebind it to 127.0.0.1 (e.g. - \"127.0.0.1:8080:8080\") — the admin API has no authentication — then rerun. Aborting without changes."
+    return 1
+  fi
+  ensure_compose_regular
+  echo -e "${GREEN}#${RESET} Admin port bound to localhost.\\n"
 }
 
 # Literal fixed-string replacement without invoking sed/awk/perl on the
@@ -326,27 +371,29 @@ heal_compose_in_place() {
 
   # Same substitutions install.sh performs on a fresh install; the
   # secrets come from the old compose instead of the generator, so MySQL
-  # accepts the existing data directory. The self-URL is refreshed to the
-  # current LAN address, matching what a fresh install would write.
+  # accepts the existing data directory. The self-URL is the loopback
+  # address, matching what a fresh install would write.
   # Fixed-string replacement only (never sed on carried-over values).
-  if [[ -z "$local_ip_address" ]]; then
-    get_local_ip
-  fi
-  replace_literal "$staged" "URL=replaceme" "URL=http://${local_ip_address}:8080" || return 1
+  replace_literal "$staged" "URL=replaceme" "URL=http://localhost:8080" || return 1
   replace_literal "$staged" "APP_KEY=replaceme" "APP_KEY=${app_key}" || return 1
   replace_literal "$staged" "DB_PASSWORD=replaceme" "DB_PASSWORD=${db_user_password}" || return 1
   replace_literal "$staged" "MYSQL_ROOT_PASSWORD=replaceme" "MYSQL_ROOT_PASSWORD=${db_root_password}" || return 1
   replace_literal "$staged" "MYSQL_PASSWORD=replaceme" "MYSQL_PASSWORD=${db_user_password}" || return 1
+  # The admin API has no authentication (upstream design), so its port is
+  # bound to loopback: a LAN-published admin would let any LAN peer drive
+  # the container-management API against private host files.
+  pin_admin_port_localhost "$staged" || return 1
 
   # Validate the healed file before it replaces the working one: every
   # placeholder consumed (KEY=replaceme form — upstream's own prose also
   # mentions the word, so match the assignment shape), every carried
-  # secret present, URL refreshed.
+  # secret present, URL loopback, admin port loopback-bound.
   if grep -qE '[A-Z_]+=replaceme' "$staged" \
-    || ! grep -Fq "URL=http://${local_ip_address}:8080" "$staged" \
+    || ! grep -Fq "URL=http://localhost:8080" "$staged" \
     || ! grep -Fq "APP_KEY=${app_key}" "$staged" \
     || ! grep -Fq "MYSQL_ROOT_PASSWORD=${db_root_password}" "$staged" \
-    || ! grep -Fq "MYSQL_PASSWORD=${db_user_password}" "$staged"; then
+    || ! grep -Fq "MYSQL_PASSWORD=${db_user_password}" "$staged" \
+    || ! grep -Fq -- '- "127.0.0.1:8080:8080"' "$staged"; then
     echo -e "${RED}#${RESET} Healed compose file failed validation. Aborting without changes."
     return 1
   fi
@@ -359,10 +406,12 @@ heal_compose_in_place() {
 
 # Full boundary check for scripts that feed compose.yml to root docker:
 # reclaim the directory (making the checks below race-free), refuse
-# non-regular compose files, and reconstruct the definition whenever it is
-# not provably root-owned or still carries mutable image references. On
-# success compose.yml is a root-owned 600 regular file with every image
-# digest-pinned.
+# non-regular compose files, reconstruct the definition whenever it is
+# not provably root-owned or still carries mutable image references, and
+# enforce the loopback admin port (migrating the stock binding we shipped,
+# refusing custom LAN publishings). On success compose.yml is a root-owned
+# 600 regular file with every image digest-pinned and the admin port
+# localhost-bound.
 ensure_trusted_compose_file() {
   reclaim_nomad_directory
   if [[ ! -f "${NOMAD_DIR}/compose.yml" ]]; then
@@ -378,4 +427,8 @@ ensure_trusted_compose_file() {
     # the canonical 600 (the file carries stack secrets). Bytes untouched.
     sudo chmod 600 "${NOMAD_DIR}/compose.yml"
   fi
+  # The heal rebuild already binds the admin port to loopback; this step
+  # migrates pre-fix installs (stock 8080:8080) in place on every
+  # privileged compose use, and refuses custom LAN publishings.
+  ensure_localhost_admin_port || exit 1
 }
