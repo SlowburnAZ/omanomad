@@ -22,7 +22,7 @@
 # bin/ layout).
 set -euo pipefail
 
-SEALED_SHA="476eee93a08e80359eca0c5a46175458e106a103"
+SEALED_SHA="eb33585d2ab4b02736f10fda79ee1cdecd99bc83"
 SEALER_SHA256="08201eff0feaf94129c9f4294543188ff54b6fedbbb5a8bff05bd42a1e2973d4"
 
 STORE="${OMANOMAD_STORE:-/usr/local/share/omanomad/bin}"

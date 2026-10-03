@@ -80,11 +80,6 @@ ensure_dependencies_installed() {
     missing_pkgs+=("pciutils")
   fi
 
-  # Check for ip (Arch package: iproute2; used for LAN IP discovery)
-  if ! command -v ip &> /dev/null; then
-    missing_pkgs+=("iproute2")
-  fi
-
   # Check for jq (used for the NVIDIA daemon.json fallback)
   if ! command -v jq &> /dev/null; then
     missing_pkgs+=("jq")
@@ -95,7 +90,7 @@ ensure_dependencies_installed() {
     sudo pacman -S --needed --noconfirm "${missing_pkgs[@]}"
 
     # Verify installation
-    for cmd in curl gpg lspci ip jq; do
+    for cmd in curl gpg lspci jq; do
       if ! command -v "$cmd" &> /dev/null; then
         echo -e "${RED}#${RESET} Failed to install $cmd. Please install it manually and try again."
         exit 1
@@ -477,13 +472,18 @@ download_management_compose_file() {
 
   # Inject dynamic env values into the compose file (fixed-string
   # replacement — never sed on these values — matching the heal path).
+  # The self-URL is loopback: the admin API has no authentication
+  # (upstream design), so it is never published beyond this host.
   echo -e "${YELLOW}#${RESET} Configuring docker-compose file env variables...\\n"
-  replace_literal "$compose_file_path" "URL=replaceme" "URL=http://${local_ip_address}:8080"
+  replace_literal "$compose_file_path" "URL=replaceme" "URL=http://localhost:8080"
   replace_literal "$compose_file_path" "APP_KEY=replaceme" "APP_KEY=${app_key}"
 
   replace_literal "$compose_file_path" "DB_PASSWORD=replaceme" "DB_PASSWORD=${db_user_password}"
   replace_literal "$compose_file_path" "MYSQL_ROOT_PASSWORD=replaceme" "MYSQL_ROOT_PASSWORD=${db_root_password}"
   replace_literal "$compose_file_path" "MYSQL_PASSWORD=replaceme" "MYSQL_PASSWORD=${db_user_password}"
+
+  # Bind the admin port to loopback for the same reason (see preflight.sh).
+  pin_admin_port_localhost "$compose_file_path"
 
   # The compose file holds APP_KEY and the DB passwords once configured:
   # make it root-only so other local users cannot read the secrets.
@@ -644,7 +644,8 @@ success_message() {
   echo -e "${GREEN}#${RESET} Project NOMAD installation completed successfully!\\n"
   echo -e "${GREEN}#${RESET} Installation files are located at /opt/project-nomad\\n\n"
   echo -e "${GREEN}#${RESET} Project NOMAD's Command Center should automatically start whenever your device reboots. However, if you need to start it manually, you can always do so by running: ${WHITE_R}${NOMAD_DIR}/start_nomad.sh${RESET}\\n"
-  echo -e "${GREEN}#${RESET} You can now access the management interface at http://localhost:8080 or http://${local_ip_address}:8080\\n"
+  echo -e "${GREEN}#${RESET} You can now access the management interface at http://localhost:8080\\n"
+  echo -e "${GREEN}#${RESET} The admin port is bound to localhost only: the admin API has no authentication, so it is never exposed to the local network.\\n"
   echo -e "${GREEN}#${RESET} Thank you for supporting Project NOMAD!\\n"
 }
 
@@ -668,7 +669,6 @@ accept_terms
 ensure_docker_installed
 check_docker_compose
 setup_nvidia_container_toolkit
-get_local_ip
 create_nomad_directory
 download_helper_scripts
 download_management_compose_file

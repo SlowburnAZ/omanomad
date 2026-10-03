@@ -6,7 +6,7 @@
 # Solutions, LLC (https://crosstalksolutions.com), adapted for
 # Arch-based systems (Omarchy). Function-by-function port: control flow,
 # prompts, docker ensure + start, compose checks, image pull, container
-# recreation, LAN discovery, and the success message intentionally mirror
+# recreation, and the success message intentionally mirror
 # upstream.
 #
 # Run with elevated privileges; the omanomad panel launches this via
@@ -34,14 +34,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/preflight.sh"
 ###################################################################################################################################################################################################
 
 ensure_dependencies_installed() {
-  # A stack update pulls images and recreates containers. It needs `ip`
-  # (Arch package: iproute2) for LAN discovery and `curl` to fetch and
-  # verify the pinned upstream compose when a pre-digest compose file
-  # needs healing.
+  # A stack update pulls images and recreates containers. It needs `curl`
+  # to fetch and verify the pinned upstream compose when a pre-digest
+  # compose file needs healing.
   local missing_pkgs=()
-  if ! command -v ip &> /dev/null; then
-    missing_pkgs+=("iproute2")
-  fi
   if ! command -v curl &> /dev/null; then
     missing_pkgs+=("curl")
   fi
@@ -49,12 +45,10 @@ ensure_dependencies_installed() {
     echo -e "${YELLOW}#${RESET} Installing required dependencies: ${missing_pkgs[*]}...\\n"
     sudo pacman -S --needed --noconfirm "${missing_pkgs[@]}"
 
-    for cmd in ip curl; do
-      if ! command -v "$cmd" &> /dev/null; then
-        echo -e "${RED}#${RESET} Failed to install $cmd. Please install it manually and try again."
-        exit 1
-      fi
-    done
+    if ! command -v curl &> /dev/null; then
+      echo -e "${RED}#${RESET} Failed to install curl. Please install it manually and try again."
+      exit 1
+    fi
     echo -e "${GREEN}#${RESET} Dependencies installed successfully.\\n"
   else
     echo -e "${GREEN}#${RESET} All required dependencies are already installed.\\n"
@@ -105,7 +99,8 @@ ensure_docker_compose_file_exists() {
   # references in place: a reinstall would regenerate the stack secrets
   # and reset the MySQL data directory, which would wipe the admin's
   # database. The heal rewrites the definition and image references;
-  # secrets and data are preserved.
+  # secrets and data are preserved. The boundary also enforces the
+  # loopback admin port (the admin API has no authentication).
   ensure_trusted_compose_file
 }
 
@@ -128,7 +123,7 @@ success_message() {
   echo -e "${GREEN}#${RESET} Project NOMAD update completed successfully!\\n"
   echo -e "${GREEN}#${RESET} Installation files are located at /opt/project-nomad\\n\n"
   echo -e "${GREEN}#${RESET} Project NOMAD's Command Center should automatically start whenever your device reboots. However, if you need to start it manually, you can always do so by running: ${WHITE_R}${NOMAD_DIR}/start_nomad.sh${RESET}\\n"
-  echo -e "${GREEN}#${RESET} You can now access the management interface at http://localhost:8080 or http://${local_ip_address}:8080\\n"
+  echo -e "${GREEN}#${RESET} You can now access the management interface at http://localhost:8080 (bound to localhost only; the admin API has no authentication).\\n"
   echo -e "${GREEN}#${RESET} Thank you for supporting Project NOMAD!\\n"
 }
 
@@ -148,9 +143,8 @@ ensure_dependencies_installed
 get_update_confirmation
 ensure_docker_installed_and_running
 check_docker_compose
-# LAN discovery before the compose check: the legacy-compose heal writes
-# the current self-URL into the healed file, matching a fresh install.
-get_local_ip
+# The compose check reclaims the trust boundary, heals legacy definitions
+# (secrets preserved), and enforces the loopback admin port.
 ensure_docker_compose_file_exists
 force_recreate
 success_message
