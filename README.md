@@ -27,7 +27,7 @@ the pinned sha256 **there**, installs it root-owned at a fixed path, and
 removes the staging directory when the process exits — success or failure:
 
 ```bash
-sudo bash -c 'd=$(mktemp -d /tmp/omanomad-entry.XXXXXXXXXX); chmod 700 "$d"; trap "rm -rf \"$d\"" EXIT; curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 120 --max-filesize 1048576 "https://raw.githubusercontent.com/SlowburnAZ/omanomad/main/bin/entry.sh" -o "$d/entry" && echo "4b3c78d6e0b69d6a11596b46066a59e0b11aa3bde9c5308f11fb8064f72c9dee  $d/entry" | sha256sum -c --strict && install -d -m 755 /usr/local/share/omanomad && install -m 700 "$d/entry" /usr/local/share/omanomad/entry'
+sudo bash -c 'd=$(mktemp -d /tmp/omanomad-entry.XXXXXXXXXX); chmod 700 "$d"; trap "rm -rf \"$d\"" EXIT; curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --max-time 120 --max-filesize 1048576 "https://raw.githubusercontent.com/SlowburnAZ/omanomad/main/bin/entry.sh" -o "$d/entry" && echo "a5999a883f0c03b966e5ff37fe2734f1d1f0490646838b34780f8fbf599943ef  $d/entry" | sha256sum -c --strict && install -d -m 755 /usr/local/share/omanomad && install -m 700 "$d/entry" /usr/local/share/omanomad/entry'
 ```
 
 The fetch locator (`main`) is just transport: the pinned sha256 is the
